@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: regulated-ai-config
+  namespace: regulated-ai
+data:
+  REDIS_URL: redis://redis:6379/0

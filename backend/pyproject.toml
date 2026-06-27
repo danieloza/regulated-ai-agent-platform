@@ -1,0 +1,28 @@
+[project]
+name = "regulated-ai-agent-platform-api"
+version = "0.1.0"
+description = "FastAPI backend for a regulated AI agent platform demo."
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.116.0",
+    "uvicorn[standard]>=0.35.0",
+    "sqlalchemy>=2.0.41",
+    "pydantic>=2.11.0",
+    "python-multipart>=0.0.20",
+    "langgraph>=1.0.0",
+    "redis>=5.2.0",
+    "psycopg[binary]>=3.2.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "httpx>=0.28.0",
+    "pytest>=8.4.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.setuptools.packages.find]
+include = ["app*"]
