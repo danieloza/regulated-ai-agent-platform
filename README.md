@@ -1,5 +1,17 @@
 # Regulated AI Agent Platform
 
+[![CI](https://github.com/danieloza/regulated-ai-agent-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/danieloza/regulated-ai-agent-platform/actions/workflows/ci.yml)
+![Python 3.12](https://img.shields.io/badge/Python-3.12-3776AB?style=for-the-badge&logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-Backend-009688?style=for-the-badge&logo=fastapi&logoColor=white)
+![SQLAlchemy](https://img.shields.io/badge/SQLAlchemy-ORM-D71F00?style=for-the-badge)
+![LangGraph](https://img.shields.io/badge/LangGraph-Workflow-1C3C3C?style=for-the-badge)
+![Redis](https://img.shields.io/badge/Redis-Rate%20Limits-DC382D?style=for-the-badge&logo=redis&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=for-the-badge&logo=docker&logoColor=white)
+![Kubernetes](https://img.shields.io/badge/Kubernetes-Ready-326CE5?style=for-the-badge&logo=kubernetes&logoColor=white)
+![Security Evals](https://img.shields.io/badge/Security%20Evals-Passing-2E7D32?style=for-the-badge)
+![Audit Ready](https://img.shields.io/badge/Audit-Ready-0F766E?style=for-the-badge)
+![License MIT](https://img.shields.io/badge/License-MIT-111827?style=for-the-badge)
+
 Backend platform for safe AI assistants in banking, medical, legal, and enterprise environments.
 
 This is not a chatbot with PDF.
