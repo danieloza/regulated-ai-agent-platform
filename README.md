@@ -36,6 +36,23 @@ The goal is to demonstrate the engineering layer around AI agents: RAG, governan
 - Security eval suite for benign requests, prompt-injection attempts, secret exfiltration, shell access, and regulated writes.
 - Premium operator dashboard built with React and Vite.
 
+## Portfolio Positioning
+
+This is the flagship project in my AI governance/backend portfolio.
+
+It connects the ideas from my earlier agent governance projects into one regulated, interview-ready platform: source-bound RAG, scoped tool access, policy enforcement, human approvals, auditability, Redis-backed rate limits, Docker, Kubernetes, and regression-tested security behavior.
+
+Suggested GitHub portfolio hierarchy:
+
+| Tier | Project | Role in the portfolio |
+| --- | --- | --- |
+| 1 | [Regulated AI Agent Platform](https://github.com/danieloza/regulated-ai-agent-platform) | Main flagship project. Shows regulated AI agent architecture end to end: RAG, governance, security, approvals, audit logs, Redis, Docker, Kubernetes, and tests. |
+| 2 | [Agentic Governance Intelligence Platform](https://github.com/danieloza/agentic-governance-intelligence-platform) | Broader AI governance platform concept with policy simulation, incidents, observability, redaction, and enterprise governance layers. |
+| 3 | [MCP Security Gateway](https://github.com/danieloza/mcp-security-gateway) | Specialist security gateway for MCP/tool access with approvals, rate limits, redacted audit logs, and deterministic policy checks. |
+| 4 | [Agent Control Plane](https://github.com/danieloza/agent-control-plane) | Operator control-plane project focused on run review, incidents, replay, exports, and runtime governance. |
+| 5 | [Danex RAG Service](https://github.com/danieloza/danex-rag-service) | Focused RAG service showing ingestion, retrieval, citations, SQL-backed answers, and evaluation-oriented API design. |
+| 6 | [AI Workflow Observatory](https://github.com/danieloza/ai-workflow-observatory) | Observability companion project for AI-assisted engineering workflows, risk signals, sessions, and verification quality. |
+
 ## Stack
 
 Python, FastAPI, SQLAlchemy, Pydantic, SQLite, LangGraph, Redis, deterministic mock embeddings, React, Vite, lucide-react, Docker, Kubernetes, pytest.
