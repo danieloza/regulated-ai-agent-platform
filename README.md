@@ -119,6 +119,10 @@ Without `DATABASE_URL`, the backend uses SQLite for a zero-config demo.
 Production deployments should use PostgreSQL, managed Redis, and secrets injected from the deployment platform. This repo includes `.env.example`; real secrets should stay in local environment variables, CI/CD secret stores, or Kubernetes Secrets managed outside source control.
 The Compose PostgreSQL profile has a `dev-only-change-me` fallback so `docker compose config` works from a clean checkout; replace it for any real environment.
 
+## Demo
+
+![Regulated AI Agent Platform demo](docs/demo.gif)
+
 ## Screenshots
 
 ### Operator Dashboard
