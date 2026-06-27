@@ -70,6 +70,27 @@ Open:
 http://127.0.0.1:5173
 ```
 
+## 2-Minute Demo Path
+
+Use this flow when presenting the project in an interview:
+
+1. Open the dashboard and show that the app is not a generic PDF chatbot: it has RAG, policy, tools, approvals, audit, ledger, Redis, Docker, and Kubernetes surfaces.
+2. Go to `Prompt Injection Lab` and run the instruction-override attack. Show the `denied` policy decision and the audit event.
+3. Open `Run Details` for that run. Walk through the question, policy decision, retrieval/tool trace, audit timeline, and final answer.
+4. Upload or inspect a malicious document that says to ignore instructions or reveal secrets. Ask a question that retrieves it and show that the answer remains safe/source-bound.
+5. Go to `Tool Gateway` and call a read-only tool such as `get_customer_summary`. Then call a regulated write such as `create_case_note` and show `approval_required`.
+6. Go to `Approvals`, add an operator comment, and approve/deny/request more information. Show that the decision is recorded in the run/audit timeline.
+7. Go to `Ledger Demo` and compare unsafe read-modify-write with the atomic SQL update:
+
+```sql
+UPDATE accounts
+SET balance = balance + :amount
+WHERE id = :account_id
+RETURNING balance;
+```
+
+The core message: the assistant can work with business data, but it cannot bypass policy, call arbitrary infrastructure, expose secrets, or make regulated writes without approval.
+
 ## Run With Redis
 
 ```powershell
@@ -160,6 +181,11 @@ docker build -t regulated-ai-agent-platform-frontend:latest .\frontend
 kubectl apply -f .\k8s
 kubectl -n regulated-ai get pods,svc,hpa
 ```
+
+## Security Notes
+
+- Threat model: [docs/threat-model.md](docs/threat-model.md)
+- Production limitations: [docs/production-limitations.md](docs/production-limitations.md)
 
 ## Interview Talking Points
 
