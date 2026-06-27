@@ -184,10 +184,4 @@ WHERE id = :account_id
 RETURNING balance;
 ```
 
-## LinkedIn Description
-
-Built a regulated AI agent platform for enterprise environments, focused on safe RAG, controlled tool access, prompt-injection resistance, audit logs, approval workflows, Redis-backed rate limits, Kubernetes deployment patterns, and deterministic backend safeguards.
-
-The project demonstrates how AI assistants can work with sensitive business data without exposing secrets, direct database credentials or unrestricted shell access.
-
 Full post draft: [docs/linkedin-post.md](docs/linkedin-post.md).
