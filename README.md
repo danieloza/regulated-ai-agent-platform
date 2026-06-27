@@ -36,12 +36,6 @@ The goal is to demonstrate the engineering layer around AI agents: RAG, governan
 - Security eval suite for benign requests, prompt-injection attempts, secret exfiltration, shell access, and regulated writes.
 - Premium operator dashboard built with React and Vite.
 
-## Portfolio Positioning
-
-This is the flagship project in my AI governance/backend portfolio.
-
-It connects the ideas from my earlier agent governance projects into one regulated, interview-ready platform: source-bound RAG, scoped tool access, policy enforcement, human approvals, auditability, Redis-backed rate limits, Docker, Kubernetes, and regression-tested security behavior.
-
 ## Stack
 
 Python, FastAPI, SQLAlchemy, Pydantic, SQLite, LangGraph, Redis, deterministic mock embeddings, React, Vite, lucide-react, Docker, Kubernetes, pytest.
@@ -183,3 +177,19 @@ SET balance = balance + :amount
 WHERE id = :account_id
 RETURNING balance;
 ```
+
+## Related Projects
+
+This repository is the main end-to-end regulated AI platform in my portfolio. Related projects explore adjacent parts of the same problem space:
+
+- [Agentic Governance Intelligence Platform](https://github.com/danieloza/agentic-governance-intelligence-platform) - broader agent governance and observability platform.
+- [MCP Security Gateway](https://github.com/danieloza/mcp-security-gateway) - focused security gateway for MCP/tool execution.
+- [Danex RAG Service](https://github.com/danieloza/danex-rag-service) - focused hybrid RAG API with ingestion, citations, and SQL-backed answers.
+
+## LinkedIn Description
+
+Built a regulated AI agent platform for enterprise environments, focused on safe RAG, controlled tool access, prompt-injection resistance, audit logs, approval workflows, Redis-backed rate limits, Kubernetes deployment patterns, and deterministic backend safeguards.
+
+The project demonstrates how AI assistants can work with sensitive business data without exposing secrets, direct database credentials or unrestricted shell access.
+
+Full post draft: [docs/linkedin-post.md](docs/linkedin-post.md).
