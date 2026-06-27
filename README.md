@@ -49,7 +49,8 @@ MIT. See [LICENSE](LICENSE).
 Backend:
 
 ```powershell
-cd C:\Users\syfsy\projekty\regulated-ai-agent-platform\backend
+git clone https://github.com/danieloza/regulated-ai-agent-platform.git
+cd regulated-ai-agent-platform/backend
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -e .[dev]
@@ -59,7 +60,7 @@ python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 Frontend:
 
 ```powershell
-cd C:\Users\syfsy\projekty\regulated-ai-agent-platform\frontend
+cd ../frontend
 npm install
 npm run dev -- --port 5173
 ```
@@ -94,7 +95,8 @@ The core message: the assistant can work with business data, but it cannot bypas
 ## Run With Redis
 
 ```powershell
-cd C:\Users\syfsy\projekty\regulated-ai-agent-platform
+git clone https://github.com/danieloza/regulated-ai-agent-platform.git
+cd regulated-ai-agent-platform
 docker compose up --build
 ```
 
@@ -109,7 +111,7 @@ The backend uses `REDIS_URL=redis://redis:6379/0` inside Compose. Without Redis 
 PostgreSQL-ready mode:
 
 ```powershell
-cd C:\Users\syfsy\projekty\regulated-ai-agent-platform
+cd regulated-ai-agent-platform
 $env:POSTGRES_PASSWORD="replace-with-local-dev-password"
 $env:DATABASE_URL="postgresql+psycopg://regulated_ai:regulated_ai_dev@postgres:5432/regulated_ai"
 docker compose --profile postgres up --build
