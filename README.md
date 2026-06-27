@@ -183,5 +183,3 @@ SET balance = balance + :amount
 WHERE id = :account_id
 RETURNING balance;
 ```
-
-Full post draft: [docs/linkedin-post.md](docs/linkedin-post.md).
