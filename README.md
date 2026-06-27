@@ -46,7 +46,7 @@ MIT. See [LICENSE](LICENSE).
 
 ## Run Locally
 
-Backend:
+Terminal 1 - backend:
 
 ```powershell
 git clone https://github.com/danieloza/regulated-ai-agent-platform.git
@@ -57,10 +57,10 @@ pip install -e .[dev]
 python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-Frontend:
+Terminal 2 - frontend:
 
 ```powershell
-cd ../frontend
+cd regulated-ai-agent-platform/frontend
 npm install
 npm run dev -- --port 5173
 ```
