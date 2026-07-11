@@ -5,3 +5,4 @@ metadata:
   namespace: regulated-ai
 data:
   REDIS_URL: redis://redis:6379/0
+  POLICY_VERSION: 2026.07.10-default

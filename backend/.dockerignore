@@ -1,0 +1,5 @@
+app/data/*.db
+app/data/*.db-*
+tests/
+__pycache__/
+.pytest_cache/

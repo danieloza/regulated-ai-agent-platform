@@ -26,6 +26,10 @@ The goal is to demonstrate the engineering layer around AI agents: RAG, governan
 - Prompt-injection lab with runnable attack scenarios and expected policy outcomes.
 - Agent tool gateway where the agent has no shell, secrets, or direct database credentials.
 - Policy engine decisions: `allowed`, `denied`, and `approval_required`.
+- Policy Replay & Diff for comparing historical runs and security evals against current or stricter candidate policy behavior before rollout.
+- Explainable risk scoring with low, medium, and high bands, weighted factors, and an operator review queue.
+- Redacted audit Evidence Pack export in JSON, Markdown, and PDF with policy version, timestamps, citations, approvals, and an integrity digest.
+- Controlled Governance Registry imports from a validated Excel template, with staged diffs, explicit apply, ownership metadata, and no implicit deletions.
 - Human approval workflow with approve, deny, more-info, operator comments, and audit records.
 - Audit timeline with PII redaction and run-details drill-down.
 - Document upload/indexing UI for TXT-style governance notes.

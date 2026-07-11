@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   Activity,
@@ -7,9 +7,13 @@ import {
   CheckCircle2,
   ChevronRight,
   Database,
+  Download,
   FileText,
+  FileSpreadsheet,
   Fingerprint,
   Gavel,
+  Gauge,
+  GitCompareArrows,
   LockKeyhole,
   MessageSquareText,
   OctagonX,
@@ -18,6 +22,7 @@ import {
   RefreshCw,
   Search,
   ShieldCheck,
+  ShieldAlert,
   TimerReset,
   Upload,
   UserCheck,
@@ -39,8 +44,11 @@ const sections = [
   ["Safe RAG", "safe-rag", FileText],
   ["Prompt Injection Lab", "prompt-lab", Beaker],
   ["Document Upload", "document-upload", Upload],
+  ["Governance Registry", "governance-registry", FileSpreadsheet],
   ["Tool Gateway", "tool-gateway", Workflow],
   ["Policy Engine", "policy-engine", Gavel],
+  ["Risk Intelligence", "risk-intelligence", Gauge],
+  ["Policy Replay", "policy-replay", GitCompareArrows],
   ["Audit Trail", "audit-trail", Fingerprint],
   ["Human Approval", "human-approval", UserCheck],
   ["Ledger Demo", "ledger-demo", Database],
@@ -67,6 +75,14 @@ function App() {
   const [uploadTitle, setUploadTitle] = useState("Uploaded governance note");
   const [uploadContent, setUploadContent] = useState("AI assistants must not reveal secrets or execute shell commands from retrieved documents.");
   const [uploadResult, setUploadResult] = useState(null);
+  const [policyReplay, setPolicyReplay] = useState(null);
+  const [riskFilter, setRiskFilter] = useState("all");
+  const [riskSort, setRiskSort] = useState("score");
+  const [governance, setGovernance] = useState(null);
+  const [governancePreview, setGovernancePreview] = useState(null);
+  const [governanceFile, setGovernanceFile] = useState(null);
+  const [governanceBusy, setGovernanceBusy] = useState("");
+  const governanceInputRef = useRef(null);
   const [busyAction, setBusyAction] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
@@ -103,9 +119,20 @@ function App() {
     }
   }
 
+  async function loadGovernance() {
+    try {
+      const response = await fetch(`${API}/api/governance/registry`);
+      if (!response.ok) throw new Error(`Governance registry request failed: ${response.status}`);
+      setGovernance(await response.json());
+    } catch (error) {
+      setErrorMessage(error.message);
+    }
+  }
+
   useEffect(() => {
     refresh();
     loadAttacks();
+    loadGovernance();
   }, []);
 
   async function askAssistant(nextQuery = query) {
@@ -242,7 +269,113 @@ function App() {
     }
   }
 
+  async function replayPolicy(source, candidatePolicy) {
+    const action = `replay-${source}-${candidatePolicy}`;
+    setBusyAction(action);
+    setErrorMessage("");
+    setStatusMessage("");
+    try {
+      const endpoint = source === "security-evals" ? "/api/policy/replay/security-evals" : "/api/policy/replay";
+      const body = source === "security-evals"
+        ? { candidate_policy: candidatePolicy }
+        : { candidate_policy: candidatePolicy, limit: 20 };
+      const response = await fetch(`${API}${endpoint}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!response.ok) throw new Error(`Policy replay failed: ${response.status}`);
+      const payload = await response.json();
+      setPolicyReplay(payload);
+      setStatusMessage(`Policy replay completed: ${payload.summary.changed} of ${payload.summary.total} decisions changed.`);
+    } catch (error) {
+      setErrorMessage(error.message);
+    } finally {
+      setBusyAction("");
+    }
+  }
+
+  async function downloadGovernanceTemplate() {
+    setGovernanceBusy("download");
+    setErrorMessage("");
+    try {
+      const response = await fetch(`${API}/api/governance/template`);
+      if (!response.ok) throw new Error(`Template download failed: ${response.status}`);
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "governance-registry-template.xlsx";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      setStatusMessage("Governance registry template downloaded.");
+    } catch (error) {
+      setErrorMessage(error.message);
+    } finally {
+      setGovernanceBusy("");
+    }
+  }
+
+  async function previewGovernanceImport() {
+    if (!governanceFile) {
+      setErrorMessage("Select a completed governance registry workbook first.");
+      governanceInputRef.current?.focus();
+      return;
+    }
+    setGovernanceBusy("preview");
+    setErrorMessage("");
+    setStatusMessage("");
+    try {
+      const form = new FormData();
+      form.append("file", governanceFile);
+      const response = await fetch(`${API}/api/governance/imports/preview?operator_id=operator.demo`, { method: "POST", body: form });
+      if (!response.ok) throw new Error(`Registry validation failed: ${response.status}`);
+      const payload = await response.json();
+      setGovernancePreview(payload);
+      setStatusMessage(`Registry staged: ${payload.summary.total_rows} valid rows, ${payload.summary.invalid} validation errors.`);
+      loadGovernance();
+    } catch (error) {
+      setErrorMessage(error.message);
+    } finally {
+      setGovernanceBusy("");
+    }
+  }
+
+  async function applyGovernanceImport() {
+    if (!governancePreview?.summary?.can_apply) return;
+    setGovernanceBusy("apply");
+    setErrorMessage("");
+    try {
+      const response = await fetch(`${API}/api/governance/imports/${governancePreview.id}/apply`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ operator_id: "operator.demo" }),
+      });
+      if (!response.ok) throw new Error(`Registry apply failed: ${response.status}`);
+      const payload = await response.json();
+      setGovernancePreview(payload);
+      setGovernanceFile(null);
+      if (governanceInputRef.current) governanceInputRef.current.value = "";
+      await loadGovernance();
+      setStatusMessage(`Registry applied: ${payload.summary.applied.added} added, ${payload.summary.applied.changed} updated.`);
+    } catch (error) {
+      setErrorMessage(error.message);
+    } finally {
+      setGovernanceBusy("");
+    }
+  }
+
   const events = useMemo(() => run?.audit ?? dashboard?.audit ?? [], [run, dashboard]);
+  const riskRuns = useMemo(() => {
+    const filtered = (dashboard?.risk_runs ?? []).filter((item) => riskFilter === "all" || item.level === riskFilter);
+    return [...filtered].sort((left, right) => (
+      riskSort === "recent"
+        ? new Date(right.created_at).getTime() - new Date(left.created_at).getTime()
+        : right.score - left.score || new Date(right.created_at).getTime() - new Date(left.created_at).getTime()
+    ));
+  }, [dashboard, riskFilter, riskSort]);
 
   function goToSection(sectionId) {
     setActiveSection(sectionId);
@@ -298,6 +431,7 @@ function App() {
           <Metric label="Pending approvals" value={dashboard?.metrics?.pending_approvals ?? "--"} tone="amber" />
           <Metric label="Ledger balance" value={dashboard?.metrics?.ledger_balance ?? "--"} />
           <Metric label="Rate limit store" value={dashboard?.metrics?.rate_limit_store ?? "--"} />
+          <Metric label="High risk runs" value={dashboard?.metrics?.high_risk_runs ?? "--"} tone="red" />
         </section>
 
         <div className="console-grid">
@@ -381,6 +515,113 @@ function App() {
             )}
           </section>
 
+          <section className="panel governance-panel" id="governance-registry">
+            <div className="panel-heading governance-heading">
+              <div>
+                <h2>Governance Registry</h2>
+                <p>Spreadsheet workflow for controlled policy, risk, evaluation, source and ownership catalogs.</p>
+              </div>
+              <div className="registry-state">
+                <FileSpreadsheet size={16} />
+                {governancePreview?.status === "applied" ? "registry applied" : governancePreview ? "import staged" : "ready for import"}
+              </div>
+            </div>
+
+            <div className="registry-steps" aria-label="Governance registry import workflow">
+              {[
+                ["01", "Template", true],
+                ["02", "Staged", Boolean(governancePreview)],
+                ["03", "Validated", Boolean(governancePreview && governancePreview.summary.invalid === 0)],
+                ["04", "Applied", governancePreview?.status === "applied"],
+              ].map(([number, label, active]) => (
+                <div className={active ? "active" : ""} key={label}><span>{number}</span><strong>{label}</strong></div>
+              ))}
+            </div>
+
+            <div className="registry-metrics">
+              <Metric label="Active records" value={governance?.metrics?.records ?? 0} />
+              <Metric label="Populated catalogs" value={`${governance?.metrics?.categories ?? 0}/5`} />
+              <Metric label="Staged imports" value={governance?.metrics?.staged_imports ?? 0} tone={governance?.metrics?.staged_imports ? "amber" : "default"} />
+              <Metric label="Last applied" value={governance?.metrics?.last_applied_at ? new Date(governance.metrics.last_applied_at).toLocaleDateString() : "never"} />
+            </div>
+
+            <div className="registry-workspace">
+              <div className="registry-actions-card">
+                <div className="registry-card-title"><Download size={17} /><div><strong>1. Download the controlled template</strong><p>Six formatted sheets with validation rules and no sample records.</p></div></div>
+                <button className="registry-download" type="button" disabled={Boolean(governanceBusy)} onClick={downloadGovernanceTemplate}>
+                  <Download size={15} />{governanceBusy === "download" ? "Preparing template..." : "Download Excel template"}
+                </button>
+                <div className="registry-divider" />
+                <div className="registry-card-title"><Upload size={17} /><div><strong>2. Stage a completed workbook</strong><p>Nothing reaches the registry until validation and diff review pass.</p></div></div>
+                <label className="registry-file-picker" htmlFor="governance-workbook">
+                  <FileSpreadsheet size={18} />
+                  <span><strong>{governanceFile?.name ?? "Choose governance workbook"}</strong><small>.xlsx only, maximum 5 MB</small></span>
+                </label>
+                <input
+                  ref={governanceInputRef}
+                  id="governance-workbook"
+                  className="registry-file-input"
+                  type="file"
+                  accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                  onChange={(event) => { setGovernanceFile(event.target.files?.[0] ?? null); setGovernancePreview(null); }}
+                />
+                <button className="secondary registry-validate" type="button" disabled={!governanceFile || Boolean(governanceBusy)} onClick={previewGovernanceImport}>
+                  <ShieldCheck size={15} />{governanceBusy === "preview" ? "Validating workbook..." : "Validate and preview diff"}
+                </button>
+              </div>
+
+              <div className="registry-preview-card">
+                <div className="registry-card-title"><GitCompareArrows size={17} /><div><strong>3. Review staged changes</strong><p>Apply is enabled only when every populated row is valid.</p></div></div>
+                {governancePreview ? (
+                  <>
+                    <div className="registry-diff-summary">
+                      <span className="added"><strong>{governancePreview.summary.added}</strong>added</span>
+                      <span className="changed"><strong>{governancePreview.summary.changed}</strong>changed</span>
+                      <span className="unchanged"><strong>{governancePreview.summary.unchanged}</strong>unchanged</span>
+                      <span className="invalid"><strong>{governancePreview.summary.invalid}</strong>invalid</span>
+                    </div>
+                    {governancePreview.errors.length > 0 && (
+                      <div className="registry-errors" role="alert">
+                        <strong><AlertTriangle size={15} />Validation errors block apply</strong>
+                        {governancePreview.errors.slice(0, 8).map((error, index) => (
+                          <p key={`${error.sheet}-${error.row}-${error.field}-${index}`}><code>{error.sheet ?? "Workbook"}{error.row ? `!${error.row}` : ""}</code><span>{error.field}: {error.message}</span></p>
+                        ))}
+                      </div>
+                    )}
+                    <div className="registry-preview-table-wrap">
+                      <table className="registry-preview-table">
+                        <thead><tr><th>Catalog</th><th>External ID</th><th>Diff</th><th>Changed fields</th></tr></thead>
+                        <tbody>
+                          {(governancePreview.rows ?? []).slice(0, 12).map((row) => (
+                            <tr key={`${row.category}-${row.external_id}`}>
+                              <td>{row.category.replaceAll("_", " ")}</td>
+                              <td><code>{row.external_id}</code></td>
+                              <td><span className={`diff-badge ${row.diff}`}>{row.diff}</span></td>
+                              <td>{row.changed_fields.length ? row.changed_fields.join(", ") : "-"}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <p className="registry-deletion-note">{governancePreview.summary.deletion_policy}</p>
+                    <button className="registry-apply" type="button" disabled={!governancePreview.summary.can_apply || Boolean(governanceBusy)} onClick={applyGovernanceImport}>
+                      <Database size={15} />{governanceBusy === "apply" ? "Applying controlled import..." : governancePreview.status === "applied" ? "Import applied" : "Apply validated import"}
+                    </button>
+                  </>
+                ) : (
+                  <div className="registry-empty"><FileSpreadsheet size={22} /><strong>No staged workbook</strong><p>Upload the completed template to see a row-level diff before any registry write.</p></div>
+                )}
+              </div>
+            </div>
+
+            <div className="registry-catalogs">
+              <div><span>Registry catalogs</span><strong>Records</strong></div>
+              {Object.entries(governance?.categories ?? {}).map(([category, records]) => (
+                <div key={category}><span>{category.replaceAll("_", " ")}</span><strong>{records.length}</strong></div>
+              ))}
+            </div>
+          </section>
+
           <section className="panel citations-panel" id="citations">
             <div className="panel-heading">
               <div>
@@ -419,6 +660,145 @@ function App() {
                 </div>
               ))}
             </div>
+          </section>
+
+          <section className="panel risk-panel" id="risk-intelligence">
+            <div className="panel-heading risk-heading">
+              <div>
+                <h2>Risk Intelligence</h2>
+                <p>Explainable run scoring, prioritized for operator review.</p>
+              </div>
+              <div className="risk-controls">
+                <div className="risk-filter" aria-label="Filter runs by risk level">
+                  {["all", "high", "medium", "low"].map((level) => (
+                    <button className={riskFilter === level ? "active" : ""} type="button" key={level} onClick={() => setRiskFilter(level)}>{level}</button>
+                  ))}
+                </div>
+                <label className="sort-control">
+                  <span>Sort</span>
+                  <select value={riskSort} onChange={(event) => setRiskSort(event.target.value)}>
+                    <option value="score">Highest risk</option>
+                    <option value="recent">Most recent</option>
+                  </select>
+                </label>
+              </div>
+            </div>
+            <div className="risk-legend" aria-label="Risk score thresholds">
+              <span><i className="risk-dot low" />0-30 low</span>
+              <span><i className="risk-dot medium" />31-70 medium</span>
+              <span><i className="risk-dot high" />71-100 high</span>
+              <strong>{riskRuns.length} matched / showing {Math.min(riskRuns.length, 20)}</strong>
+            </div>
+            <div className="risk-table-wrap">
+              <table className="risk-table">
+                <caption>Runs prioritized by explainable risk score</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Risk</th>
+                    <th scope="col">Run</th>
+                    <th scope="col">Decision</th>
+                    <th scope="col">Detected factors</th>
+                    <th scope="col">Policy version</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {riskRuns.slice(0, 20).map((item) => (
+                    <tr key={item.run_id}>
+                      <td><div className={`risk-score ${item.level}`}><strong>{item.score}</strong><span>{item.level}</span></div></td>
+                      <td>
+                        <button className="run-id-link" type="button" onClick={() => openRunDetails(item.run_id)}>{item.run_id}</button>
+                        <p className="risk-question">{item.question}</p>
+                      </td>
+                      <td><span className={`decision ${item.decision}`}>{decisionIcon(item.decision)}{item.decision}</span></td>
+                      <td>
+                        <div className="factor-list">
+                          {item.factors.length ? item.factors.map((factor) => <span key={factor.code}>{factor.code.replaceAll("_", " ")} <b>+{factor.weight}</b></span>) : <span className="factor-none">no elevated factors</span>}
+                        </div>
+                      </td>
+                      <td><code className="policy-version">{item.policy_version}</code></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {riskRuns.length === 0 && <div className="risk-empty"><ShieldAlert size={18} />No runs match the selected risk level.</div>}
+            </div>
+          </section>
+
+          <section className="panel replay-panel" id="policy-replay">
+            <div className="panel-heading replay-heading">
+              <div>
+                <h2>Policy Replay &amp; Diff</h2>
+                <p>Regression-test candidate policy behavior against recorded decisions and adversarial evals before rollout.</p>
+              </div>
+              <div className="replay-policy-label">
+                <GitCompareArrows size={17} />
+                {policyReplay?.candidate_policy ?? "select a replay"}
+              </div>
+            </div>
+            <div className="replay-actions" aria-label="Policy replay actions">
+              <button type="button" disabled={Boolean(busyAction)} onClick={() => replayPolicy("history", "current")}>
+                <RefreshCw size={16} />
+                <span><strong>Replay last 20 runs</strong><small>Recorded decisions vs current policy</small></span>
+              </button>
+              <button type="button" disabled={Boolean(busyAction)} onClick={() => replayPolicy("security-evals", "current")}>
+                <ShieldCheck size={16} />
+                <span><strong>Replay security evals</strong><small>Expected outcomes vs current policy</small></span>
+              </button>
+              <button type="button" disabled={Boolean(busyAction)} onClick={() => replayPolicy("history", "strict")}>
+                <GitCompareArrows size={16} />
+                <span><strong>Compare strict mode</strong><small>Recorded decisions vs strict candidate</small></span>
+              </button>
+            </div>
+
+            {policyReplay ? (
+              <>
+                <div className="replay-summary" aria-label="Replay summary">
+                  <Metric label="Runs evaluated" value={policyReplay.summary.total} />
+                  <Metric label="Decision changes" value={policyReplay.summary.changed} tone={policyReplay.summary.changed ? "amber" : "default"} />
+                  <Metric label="Stricter" value={policyReplay.summary.stricter} />
+                  <Metric label="Relaxed" value={policyReplay.summary.relaxed} tone={policyReplay.summary.relaxed ? "red" : "default"} />
+                </div>
+                <div className="replay-table-wrap">
+                  <table className="replay-table">
+                    <caption>Policy decision comparison for {policyReplay.kind.replaceAll("_", " ")}</caption>
+                    <thead>
+                      <tr>
+                        <th scope="col">Run ID</th>
+                        <th scope="col">Question</th>
+                        <th scope="col">Current decision</th>
+                        <th scope="col">Candidate decision</th>
+                        <th scope="col">Diff</th>
+                        <th scope="col">Risk</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {policyReplay.results.map((item) => (
+                        <tr key={item.run_id}>
+                          <td>
+                            {item.run_id.startsWith("eval:") ? <code>{item.run_id}</code> : (
+                              <button className="run-id-link" type="button" onClick={() => openRunDetails(item.run_id)}>{item.run_id}</button>
+                            )}
+                          </td>
+                          <td><span className="replay-question">{item.question}</span></td>
+                          <td><span className={`decision ${item.current_decision}`}>{decisionIcon(item.current_decision)}{item.current_decision}</span></td>
+                          <td>
+                            <span className={`decision ${item.candidate_decision}`}>{decisionIcon(item.candidate_decision)}{item.candidate_decision}</span>
+                            <small className="candidate-reason">{item.candidate_reason}</small>
+                          </td>
+                          <td><span className={`diff-badge ${item.diff}`}>{item.diff}</span></td>
+                          <td><span className={`risk-badge ${item.risk}`}>{item.risk}</span></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            ) : (
+              <div className="replay-empty">
+                <GitCompareArrows size={20} />
+                <div><strong>No replay selected</strong><p>Run a baseline or strict comparison to identify policy drift before deployment.</p></div>
+              </div>
+            )}
           </section>
 
           <section className="panel tools-panel" id="tool-gateway">
@@ -533,6 +913,35 @@ function ToolButton({ name, scope, tone = "default", disabled = false, onClick }
 }
 
 function RunDrawer({ run, onClose }) {
+  const [evidenceFormat, setEvidenceFormat] = useState("pdf");
+  const [exporting, setExporting] = useState(false);
+  const [exportStatus, setExportStatus] = useState("");
+
+  async function exportEvidence() {
+    setExporting(true);
+    setExportStatus("");
+    try {
+      const response = await fetch(`${API}/api/runs/${run.run_id}/evidence?format=${evidenceFormat}`);
+      if (!response.ok) throw new Error(`Evidence export failed: ${response.status}`);
+      const blob = await response.blob();
+      const disposition = response.headers.get("content-disposition") ?? "";
+      const filename = disposition.match(/filename="([^"]+)"/)?.[1] ?? `audit-evidence-${run.run_id}.${evidenceFormat === "markdown" ? "md" : evidenceFormat}`;
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      setExportStatus(`${evidenceFormat.toUpperCase()} evidence pack exported.`);
+    } catch (error) {
+      setExportStatus(error.message);
+    } finally {
+      setExporting(false);
+    }
+  }
+
   return (
     <aside className="run-drawer">
       <div className="drawer-header">
@@ -541,6 +950,24 @@ function RunDrawer({ run, onClose }) {
           <p>{run.run_id}</p>
         </div>
         <button className="icon-button" type="button" onClick={onClose} title="Close"><X size={16} /></button>
+      </div>
+      <div className="evidence-export">
+        <div className="evidence-copy">
+          <span><ShieldCheck size={15} /> Audit evidence</span>
+          <p>Redacted, timestamped and integrity-digested.</p>
+        </div>
+        <div className="evidence-actions">
+          <label>
+            <span>Format</span>
+            <select value={evidenceFormat} onChange={(event) => setEvidenceFormat(event.target.value)}>
+              <option value="pdf">PDF</option>
+              <option value="json">JSON</option>
+              <option value="markdown">Markdown</option>
+            </select>
+          </label>
+          <button type="button" disabled={exporting} onClick={exportEvidence}><Download size={15} />{exporting ? "Preparing..." : "Export audit evidence"}</button>
+        </div>
+        {exportStatus && <small role="status">{exportStatus}</small>}
       </div>
       <div className="drawer-section">
         <span>Question</span>
@@ -553,6 +980,16 @@ function RunDrawer({ run, onClose }) {
           {run.policy?.decision ?? "unknown"}
         </div>
         <p>{run.policy?.reason}</p>
+        <code className="policy-version">{run.policy_version ?? "legacy-unversioned"}</code>
+      </div>
+      <div className="drawer-section">
+        <span>Risk assessment</span>
+        <div className="drawer-risk">
+          <div className={`risk-score ${run.risk?.level ?? "low"}`}><strong>{run.risk?.score ?? 0}</strong><span>{run.risk?.level ?? "low"}</span></div>
+          <div className="factor-list">
+            {(run.risk?.factors ?? []).length ? run.risk.factors.map((factor) => <span key={factor.code}>{factor.code.replaceAll("_", " ")} <b>+{factor.weight}</b></span>) : <span className="factor-none">no elevated factors</span>}
+          </div>
+        </div>
       </div>
       <div className="drawer-section">
         <span>LangGraph trace</span>
