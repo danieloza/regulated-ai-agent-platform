@@ -139,6 +139,83 @@ class GovernanceImport(Base):
     applied_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
+class ManagedAgent(Base):
+    __tablename__ = "managed_agents"
+
+    id: Mapped[str] = mapped_column(String(48), primary_key=True)
+    name: Mapped[str] = mapped_column(String(160))
+    owner: Mapped[str] = mapped_column(String(120))
+    status: Mapped[str] = mapped_column(String(40), default="registered", index=True)
+    scopes_json: Mapped[list] = mapped_column(JSON, default=list)
+    evaluation_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cycle_count: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
+
+
+class LifecycleIncident(Base):
+    __tablename__ = "lifecycle_incidents"
+
+    id: Mapped[str] = mapped_column(String(48), primary_key=True)
+    agent_id: Mapped[str] = mapped_column(String(48), index=True)
+    run_id: Mapped[str] = mapped_column(String(48), index=True)
+    severity: Mapped[str] = mapped_column(String(20), default="high")
+    status: Mapped[str] = mapped_column(String(40), default="detected", index=True)
+    summary: Mapped[str] = mapped_column(Text)
+    owner: Mapped[str] = mapped_column(String(120))
+    mitigation: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
+
+
+class LifecyclePolicyChange(Base):
+    __tablename__ = "lifecycle_policy_changes"
+
+    id: Mapped[str] = mapped_column(String(48), primary_key=True)
+    agent_id: Mapped[str] = mapped_column(String(48), index=True)
+    incident_id: Mapped[str] = mapped_column(String(48), index=True)
+    version: Mapped[str] = mapped_column(String(80))
+    status: Mapped[str] = mapped_column(String(40), default="draft", index=True)
+    candidate_policy: Mapped[str] = mapped_column(String(40), default="strict")
+    replay_summary_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    approved_by: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
+
+
+class DataSubjectRequest(Base):
+    __tablename__ = "data_subject_requests"
+
+    id: Mapped[str] = mapped_column(String(48), primary_key=True)
+    subject_key: Mapped[str] = mapped_column(String(80), index=True)
+    subject_ref: Mapped[str] = mapped_column(String(80), index=True)
+    jurisdiction: Mapped[str] = mapped_column(String(40), default="GDPR")
+    status: Mapped[str] = mapped_column(String(40), default="discovered", index=True)
+    owner: Mapped[str] = mapped_column(String(120), default="Privacy Operations")
+    systems_json: Mapped[list] = mapped_column(JSON, default=list)
+    export_digest: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    correction_summary: Mapped[str] = mapped_column(Text, default="")
+    restriction_scope: Mapped[str] = mapped_column(Text, default="")
+    deletion_summary: Mapped[str] = mapped_column(Text, default="")
+    proof_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
+
+
+class ControlLifecycle(Base):
+    __tablename__ = "control_lifecycles"
+
+    id: Mapped[str] = mapped_column(String(48), primary_key=True)
+    kind: Mapped[str] = mapped_column(String(40), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(120))
+    status: Mapped[str] = mapped_column(String(40), index=True)
+    owner: Mapped[str] = mapped_column(String(120))
+    data_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    evidence_json: Mapped[list] = mapped_column(JSON, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
+
+
 class QueryRequest(BaseModel):
     question: str = Field(min_length=3, max_length=1200)
     user_id: str = "operator.demo"
@@ -178,6 +255,38 @@ class GovernanceApplyRequest(BaseModel):
     operator_id: str = "operator.demo"
 
 
+class LifecycleTransitionRequest(BaseModel):
+    action: Literal[
+        "evaluate_agent",
+        "activate_agent",
+        "detect_runtime_risk",
+        "triage_incident",
+        "contain_incident",
+        "mitigate_incident",
+        "draft_policy",
+        "replay_policy",
+        "approve_policy",
+        "rollout_policy",
+    ]
+    agent_id: str = "agent_customer_copilot"
+    operator_id: str = "operator.demo"
+    notes: str = Field(default="", max_length=500)
+
+
+class DataSubjectTransitionRequest(BaseModel):
+    action: Literal["export_data", "correct_data", "restrict_processing", "delete_data", "generate_proof"]
+    request_id: str = "dsr_customer_1042"
+    operator_id: str = "privacy.operator"
+    notes: str = Field(default="", max_length=500)
+
+
+class ControlLifecycleTransitionRequest(BaseModel):
+    kind: Literal["cost", "model", "approval", "knowledge"]
+    action: str = Field(min_length=3, max_length=80)
+    operator_id: str = "governance.operator"
+    notes: str = Field(default="", max_length=500)
+
+
 PROMPT_ATTACKS = [
     {
         "id": "ignore-instructions",
@@ -209,6 +318,50 @@ PROMPT_ATTACKS = [
     },
 ]
 
+
+
+CONTROL_LIFECYCLE_SPECS = {
+    "cost": {
+        "id": "control_cost_governance",
+        "name": "Cost governance",
+        "owner": "FinOps",
+        "steps": ["Budget", "Allocate", "Track", "Alert", "Throttle", "Optimize"],
+        "statuses": ["budgeted", "allocated", "tracked", "alerted", "throttled", "optimized"],
+        "actions": ["allocate_budget", "track_spend", "trigger_cost_alert", "throttle_usage", "optimize_cost"],
+        "labels": ["Allocate agent budget", "Record current spend", "Trigger threshold alert", "Apply usage throttle", "Optimize model routing"],
+        "initial": {"budget_usd": 5000, "allocated_usd": 0, "spent_usd": 0, "forecast_usd": 0, "throttle_percent": 0, "savings_percent": 0},
+    },
+    "model": {
+        "id": "control_model_change",
+        "name": "Model change",
+        "owner": "Model Risk",
+        "steps": ["Propose", "Evaluate", "Shadow", "Canary", "Promote", "Monitor"],
+        "statuses": ["proposed", "evaluated", "shadowed", "canary", "promoted", "monitored"],
+        "actions": ["evaluate_model", "shadow_deploy", "canary_release", "promote_model", "monitor_model"],
+        "labels": ["Run candidate evaluation", "Start shadow deployment", "Release 10% canary", "Promote candidate model", "Verify production monitoring"],
+        "initial": {"baseline_model": "governed-model-v1", "candidate_model": "governed-model-v2", "eval_pass_rate": 0, "shadow_requests": 0, "canary_percent": 0, "latency_delta_ms": 0},
+    },
+    "approval": {
+        "id": "control_human_approval",
+        "name": "Human approval",
+        "owner": "Compliance Operations",
+        "steps": ["Request", "Assign", "Review", "Decide", "Execute", "Verify"],
+        "statuses": ["requested", "assigned", "reviewed", "decided", "executed", "verified"],
+        "actions": ["assign_reviewer", "review_evidence", "approve_action", "execute_approved_action", "verify_execution"],
+        "labels": ["Assign compliance reviewer", "Review approval evidence", "Approve regulated action", "Execute approved action", "Verify exact execution"],
+        "initial": {"approval_id": "appr_lifecycle_demo", "tool_name": "create_case_note", "reviewer": None, "decision": None, "execution_digest": None},
+    },
+    "knowledge": {
+        "id": "control_knowledge",
+        "name": "Knowledge lifecycle",
+        "owner": "Knowledge Governance",
+        "steps": ["Ingest", "Classify", "Scan", "Approve", "Index", "Review", "Retire"],
+        "statuses": ["ingested", "classified", "scanned", "approved", "indexed", "reviewed", "retired"],
+        "actions": ["classify_source", "scan_source", "approve_source", "index_source", "review_source", "retire_source"],
+        "labels": ["Classify source sensitivity", "Scan injection and PII risk", "Approve knowledge source", "Index approved content", "Review freshness", "Retire expired source"],
+        "initial": {"source_id": "source_policy_2026", "classification": None, "injection_scan": None, "pii_scan": None, "chunks_indexed": 0, "review_due": None},
+    },
+}
 
 
 @asynccontextmanager
@@ -482,6 +635,74 @@ def source_bound_answer(question: str, citations: list[dict]) -> str:
 def seed() -> None:
     Base.metadata.create_all(engine)
     with SessionLocal() as session:
+        if not session.get(ManagedAgent, "agent_customer_copilot"):
+            session.add(
+                ManagedAgent(
+                    id="agent_customer_copilot",
+                    name="Customer Operations Copilot",
+                    owner="AI Governance",
+                    status="registered",
+                    scopes_json=["customer:read", "rag:read", "case:write"],
+                )
+            )
+            audit(
+                session,
+                "lifecycle_seed",
+                "system",
+                "lifecycle_registered",
+                "registered",
+                "Registered Customer Operations Copilot for governed onboarding.",
+                {"agent_id": "agent_customer_copilot"},
+            )
+        if not session.get(DataSubjectRequest, "dsr_customer_1042"):
+            session.add(
+                DataSubjectRequest(
+                    id="dsr_customer_1042",
+                    subject_key="cus-1042",
+                    subject_ref=f"subject_{hashlib.sha256(b'cus-1042').hexdigest()[:12]}",
+                    jurisdiction="GDPR",
+                    status="discovered",
+                    owner="Privacy Operations",
+                    systems_json=[
+                        {"system": "customer_profile", "category": "identity and service data", "action": "eligible"},
+                        {"system": "rag_documents", "category": "approved knowledge references", "action": "review"},
+                        {"system": "audit_events", "category": "compliance evidence", "action": "retain_redacted"},
+                    ],
+                )
+            )
+            audit(
+                session,
+                "dsr_customer_1042",
+                "system",
+                "data_subject_discovered",
+                "discovered",
+                "Discovered subject data locations and assigned retention treatment.",
+                {"request_id": "dsr_customer_1042", "subject_ref": f"subject_{hashlib.sha256(b'cus-1042').hexdigest()[:12]}"},
+            )
+        for kind, spec in CONTROL_LIFECYCLE_SPECS.items():
+            if not session.get(ControlLifecycle, spec["id"]):
+                session.add(
+                    ControlLifecycle(
+                        id=spec["id"],
+                        kind=kind,
+                        name=spec["name"],
+                        status=spec["statuses"][0],
+                        owner=spec["owner"],
+                        data_json=spec["initial"],
+                        evidence_json=[],
+                    )
+                )
+        if not session.get(Approval, "appr_lifecycle_demo"):
+            session.add(
+                Approval(
+                    id="appr_lifecycle_demo",
+                    run_id="approval_lifecycle_demo",
+                    tool_name="create_case_note",
+                    payload={"customer_id": "cus-2048", "note": "Verified KYC review outcome."},
+                    status="pending",
+                )
+            )
+        session.commit()
         if session.scalar(select(Document.id).limit(1)):
             return
         docs = [
@@ -603,6 +824,495 @@ def dashboard() -> dict:
             "tools": [{"name": name, **settings} for name, settings in TOOL_SCOPES.items()],
             "risk_runs": risk_runs,
         }
+
+
+LIFECYCLE_ACTION_LABELS = {
+    "evaluate_agent": "Run onboarding evaluation",
+    "activate_agent": "Approve production activation",
+    "detect_runtime_risk": "Simulate high-risk runtime signal",
+    "triage_incident": "Triage detected incident",
+    "contain_incident": "Contain agent access",
+    "mitigate_incident": "Record mitigation",
+    "draft_policy": "Draft policy improvement",
+    "replay_policy": "Replay candidate policy",
+    "approve_policy": "Approve candidate policy",
+    "rollout_policy": "Roll out and reactivate",
+}
+
+
+def serialize_managed_agent(item: ManagedAgent) -> dict:
+    return {
+        "id": item.id,
+        "name": item.name,
+        "owner": item.owner,
+        "status": item.status,
+        "scopes": item.scopes_json,
+        "evaluation_score": item.evaluation_score,
+        "cycle_count": item.cycle_count,
+        "created_at": item.created_at.isoformat(),
+        "updated_at": item.updated_at.isoformat(),
+    }
+
+
+def serialize_lifecycle_incident(item: LifecycleIncident | None) -> dict | None:
+    if not item:
+        return None
+    return {
+        "id": item.id,
+        "agent_id": item.agent_id,
+        "run_id": item.run_id,
+        "severity": item.severity,
+        "status": item.status,
+        "summary": item.summary,
+        "owner": item.owner,
+        "mitigation": item.mitigation,
+        "created_at": item.created_at.isoformat(),
+        "updated_at": item.updated_at.isoformat(),
+    }
+
+
+def serialize_lifecycle_policy(item: LifecyclePolicyChange | None) -> dict | None:
+    if not item:
+        return None
+    return {
+        "id": item.id,
+        "agent_id": item.agent_id,
+        "incident_id": item.incident_id,
+        "version": item.version,
+        "status": item.status,
+        "candidate_policy": item.candidate_policy,
+        "replay_summary": item.replay_summary_json,
+        "approved_by": item.approved_by,
+        "created_at": item.created_at.isoformat(),
+        "updated_at": item.updated_at.isoformat(),
+    }
+
+
+def lifecycle_context(session: Session, agent_id: str) -> tuple[ManagedAgent, LifecycleIncident | None, LifecyclePolicyChange | None]:
+    agent = session.get(ManagedAgent, agent_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail="Managed agent not found")
+    incident = session.scalar(
+        select(LifecycleIncident).where(LifecycleIncident.agent_id == agent_id).order_by(LifecycleIncident.created_at.desc()).limit(1)
+    )
+    policy = (
+        session.scalar(
+            select(LifecyclePolicyChange)
+            .where(LifecyclePolicyChange.agent_id == agent_id, LifecyclePolicyChange.incident_id == incident.id)
+            .order_by(LifecyclePolicyChange.created_at.desc())
+            .limit(1)
+        )
+        if incident
+        else None
+    )
+    return agent, incident, policy
+
+
+def lifecycle_next_action(agent: ManagedAgent, incident: LifecycleIncident | None, policy: LifecyclePolicyChange | None) -> str:
+    if agent.status == "registered":
+        return "evaluate_agent"
+    if agent.status == "evaluated":
+        return "activate_agent"
+    if incident and incident.status == "detected":
+        return "triage_incident"
+    if incident and incident.status == "triaged":
+        return "contain_incident"
+    if incident and incident.status == "contained":
+        return "mitigate_incident"
+    if incident and incident.status == "mitigated" and not policy:
+        return "draft_policy"
+    if policy and policy.status == "draft":
+        return "replay_policy"
+    if policy and policy.status == "replayed":
+        return "approve_policy"
+    if policy and policy.status == "approved":
+        return "rollout_policy"
+    return "detect_runtime_risk"
+
+
+def lifecycle_payload(session: Session, agent_id: str = "agent_customer_copilot") -> dict:
+    agent, incident, policy = lifecycle_context(session, agent_id)
+    next_action = lifecycle_next_action(agent, incident, policy)
+    events = session.scalars(
+        select(AuditEvent)
+        .where(AuditEvent.event_type.like("lifecycle_%"), AuditEvent.metadata_json["agent_id"].as_string() == agent_id)
+        .order_by(AuditEvent.created_at.desc())
+        .limit(16)
+    ).all()
+    onboarding_order = {"registered": 1, "evaluated": 2, "active": 3, "at_risk": 3, "suspended": 3}
+    incident_order = {"detected": 1, "triaged": 2, "contained": 3, "mitigated": 4, "closed": 4}
+    policy_order = {"draft": 1, "replayed": 2, "approved": 3, "rolled_out": 4}
+    return {
+        "agent": serialize_managed_agent(agent),
+        "incident": serialize_lifecycle_incident(incident),
+        "policy_change": serialize_lifecycle_policy(policy),
+        "next_action": {"id": next_action, "label": LIFECYCLE_ACTION_LABELS[next_action]},
+        "loops": [
+            {"id": "onboarding", "name": "Agent onboarding", "steps": ["Register", "Evaluate", "Activate"], "progress": onboarding_order.get(agent.status, 3)},
+            {"id": "runtime", "name": "Runtime governance", "steps": ["Operate", "Observe", "Detect"], "progress": 3 if incident else (2 if agent.status == "active" else 0)},
+            {"id": "incident", "name": "Incident response", "steps": ["Detect", "Triage", "Contain", "Mitigate"], "progress": incident_order.get(incident.status, 0) if incident else 0},
+            {"id": "policy", "name": "Policy improvement", "steps": ["Draft", "Replay", "Approve", "Roll out"], "progress": policy_order.get(policy.status, 0) if policy else 0},
+        ],
+        "activity": serialize_events(events),
+    }
+
+
+@app.get("/api/lifecycle")
+def get_lifecycle(agent_id: str = "agent_customer_copilot") -> dict:
+    with SessionLocal() as session:
+        return lifecycle_payload(session, agent_id)
+
+
+@app.post("/api/lifecycle/transition")
+def transition_lifecycle(request: LifecycleTransitionRequest) -> dict:
+    with SessionLocal() as session:
+        agent, incident, policy = lifecycle_context(session, request.agent_id)
+        expected = lifecycle_next_action(agent, incident, policy)
+        if request.action != expected:
+            raise HTTPException(status_code=409, detail=f"Transition blocked. Expected {expected}.")
+        now = datetime.now(UTC)
+        summary = LIFECYCLE_ACTION_LABELS[request.action]
+
+        if request.action == "evaluate_agent":
+            agent.status = "evaluated"
+            agent.evaluation_score = 100
+            summary = "Security and governance evaluation passed 4/4 controls."
+        elif request.action == "activate_agent":
+            agent.status = "active"
+            summary = "Agent activated with least-privilege scopes."
+        elif request.action == "detect_runtime_risk":
+            agent.status = "at_risk"
+            incident = LifecycleIncident(
+                id=f"inc_{uuid4().hex[:12]}",
+                agent_id=agent.id,
+                run_id=f"runtime_{uuid4().hex[:10]}",
+                severity="high",
+                status="detected",
+                summary="Prompt-injection and secret-exfiltration indicators exceeded the high-risk threshold.",
+                owner="Security Operations",
+            )
+            session.add(incident)
+            summary = "High-risk runtime signal created an incident."
+        elif request.action == "triage_incident":
+            incident.status = "triaged"
+            summary = "Incident triaged as a policy-boundary violation."
+        elif request.action == "contain_incident":
+            incident.status = "contained"
+            agent.status = "suspended"
+            summary = "Write scope revoked and agent suspended pending mitigation."
+        elif request.action == "mitigate_incident":
+            incident.status = "mitigated"
+            incident.mitigation = request.notes or "Restricted regulated writes and added an explicit injection-deny rule."
+            summary = "Mitigation recorded with scoped access remaining disabled."
+        elif request.action == "draft_policy":
+            policy = LifecyclePolicyChange(
+                id=f"pchange_{uuid4().hex[:10]}",
+                agent_id=agent.id,
+                incident_id=incident.id,
+                version=f"2026.07.12-strict-{agent.cycle_count + 1}",
+                status="draft",
+                candidate_policy="strict",
+            )
+            session.add(policy)
+            summary = f"Drafted policy candidate {policy.version}."
+        elif request.action == "replay_policy":
+            cases = []
+            for case in json.loads(SECURITY_EVAL_PATH.read_text(encoding="utf-8")):
+                candidate = classify_candidate_policy(case["input"], "strict")
+                diff, risk = policy_diff(case["expected_decision"], candidate["decision"])
+                cases.append(
+                    {
+                        "run_id": f"eval:{case['id']}",
+                        "question": case["input"],
+                        "current_decision": case["expected_decision"],
+                        "candidate_decision": candidate["decision"],
+                        "diff": diff,
+                        "risk": risk,
+                    }
+                )
+            policy.status = "replayed"
+            policy.replay_summary_json = replay_summary(cases)
+            summary = f"Policy replay completed across {len(cases)} adversarial evaluations."
+        elif request.action == "approve_policy":
+            policy.status = "approved"
+            policy.approved_by = request.operator_id
+            summary = f"Policy candidate approved by {request.operator_id}."
+        elif request.action == "rollout_policy":
+            policy.status = "rolled_out"
+            incident.status = "closed"
+            agent.status = "active"
+            agent.cycle_count += 1
+            summary = f"Policy {policy.version} rolled out; agent reactivated and incident closed."
+
+        agent.updated_at = now
+        if incident:
+            incident.updated_at = now
+        if policy:
+            policy.updated_at = now
+        audit(
+            session,
+            incident.run_id if incident else f"onboarding_{agent.id}",
+            request.operator_id,
+            f"lifecycle_{request.action}",
+            agent.status,
+            summary,
+            {"agent_id": agent.id, "incident_id": incident.id if incident else None, "policy_change_id": policy.id if policy else None, "notes": redact_pii(request.notes)},
+        )
+        return lifecycle_payload(session, agent.id)
+
+
+DATA_SUBJECT_ACTIONS = {
+    "discovered": ("export_data", "Export subject data"),
+    "exported": ("correct_data", "Apply verified correction"),
+    "corrected": ("restrict_processing", "Restrict processing"),
+    "restricted": ("delete_data", "Delete eligible data"),
+    "deleted": ("generate_proof", "Generate completion proof"),
+}
+
+
+def serialize_data_subject_request(item: DataSubjectRequest) -> dict:
+    next_action = DATA_SUBJECT_ACTIONS.get(item.status)
+    return {
+        "id": item.id,
+        "subject_ref": item.subject_ref,
+        "jurisdiction": item.jurisdiction,
+        "status": item.status,
+        "owner": item.owner,
+        "systems": item.systems_json,
+        "export_digest": item.export_digest,
+        "correction_summary": item.correction_summary,
+        "restriction_scope": item.restriction_scope,
+        "deletion_summary": item.deletion_summary,
+        "proof": item.proof_json,
+        "steps": ["Discover", "Export", "Correct", "Restrict", "Delete", "Prove"],
+        "progress": {"discovered": 1, "exported": 2, "corrected": 3, "restricted": 4, "deleted": 5, "proved": 6}[item.status],
+        "next_action": {"id": next_action[0], "label": next_action[1]} if next_action else None,
+        "created_at": item.created_at.isoformat(),
+        "updated_at": item.updated_at.isoformat(),
+    }
+
+
+def data_subject_payload(session: Session, request_id: str = "dsr_customer_1042") -> dict:
+    item = session.get(DataSubjectRequest, request_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Data-subject request not found")
+    events = session.scalars(
+        select(AuditEvent)
+        .where(AuditEvent.event_type.like("data_subject_%"), AuditEvent.metadata_json["request_id"].as_string() == request_id)
+        .order_by(AuditEvent.created_at.desc())
+        .limit(12)
+    ).all()
+    payload = serialize_data_subject_request(item)
+    payload["activity"] = serialize_events(events)
+    payload["retention_exceptions"] = ["Redacted audit evidence is retained for compliance and dispute resolution."]
+    return payload
+
+
+def active_data_subject_restriction(session: Session, subject_key: str) -> DataSubjectRequest | None:
+    return session.scalar(
+        select(DataSubjectRequest)
+        .where(DataSubjectRequest.subject_key == subject_key, DataSubjectRequest.status.in_(["restricted", "deleted", "proved"]))
+        .order_by(DataSubjectRequest.updated_at.desc())
+        .limit(1)
+    )
+
+
+@app.get("/api/data-subject")
+def get_data_subject_request(request_id: str = "dsr_customer_1042") -> dict:
+    with SessionLocal() as session:
+        return data_subject_payload(session, request_id)
+
+
+@app.post("/api/data-subject/transition")
+def transition_data_subject(request: DataSubjectTransitionRequest) -> dict:
+    with SessionLocal() as session:
+        item = session.get(DataSubjectRequest, request.request_id)
+        if not item:
+            raise HTTPException(status_code=404, detail="Data-subject request not found")
+        expected = DATA_SUBJECT_ACTIONS.get(item.status)
+        if not expected or request.action != expected[0]:
+            expected_name = expected[0] if expected else "none"
+            raise HTTPException(status_code=409, detail=f"Transition blocked. Expected {expected_name}.")
+        customer = session.get(Customer, item.subject_key)
+        now = datetime.now(UTC)
+
+        if request.action == "export_data":
+            snapshot = {
+                "subject_ref": item.subject_ref,
+                "profile": {"segment": customer.segment, "risk_score": customer.risk_score, "note": redact_pii(customer.note)} if customer else None,
+                "systems": item.systems_json,
+                "generated_at": now.isoformat(),
+            }
+            item.export_digest = hashlib.sha256(json.dumps(snapshot, sort_keys=True).encode("utf-8")).hexdigest()
+            item.status = "exported"
+            summary = "Exported a redacted, integrity-digested subject data package."
+        elif request.action == "correct_data":
+            if customer:
+                customer.note = "Contact preference verified and corrected by Privacy Operations."
+            item.correction_summary = request.notes or "Verified and corrected the customer contact preference."
+            item.status = "corrected"
+            summary = "Applied a verified correction to the eligible customer profile."
+        elif request.action == "restrict_processing":
+            item.restriction_scope = request.notes or "Blocked customer read and regulated write tools pending deletion completion."
+            item.status = "restricted"
+            summary = "Restricted operational processing for the subject across scoped agent tools."
+        elif request.action == "delete_data":
+            if customer:
+                customer.name = "REDACTED"
+                customer.note = "Deleted under completed data-subject request."
+            item.deletion_summary = "Anonymized the eligible customer profile; retained only redacted compliance evidence."
+            item.status = "deleted"
+            summary = "Deleted or anonymized eligible subject data and recorded retention exceptions."
+        else:
+            proof_source = {
+                "request_id": item.id,
+                "subject_ref": item.subject_ref,
+                "export_digest": item.export_digest,
+                "correction": item.correction_summary,
+                "restriction": item.restriction_scope,
+                "deletion": item.deletion_summary,
+                "completed_at": now.isoformat(),
+            }
+            proof_digest = hashlib.sha256(json.dumps(proof_source, sort_keys=True).encode("utf-8")).hexdigest()
+            item.proof_json = {**proof_source, "proof_digest": proof_digest, "verified_by": request.operator_id}
+            item.status = "proved"
+            summary = "Generated completion proof with an integrity digest and operator attribution."
+
+        item.updated_at = now
+        audit(
+            session,
+            item.id,
+            request.operator_id,
+            f"data_subject_{request.action}",
+            item.status,
+            summary,
+            {"request_id": item.id, "subject_ref": item.subject_ref, "notes": redact_pii(request.notes)},
+        )
+        return data_subject_payload(session, item.id)
+
+
+@app.get("/api/data-subject/{request_id}/evidence")
+def export_data_subject_evidence(request_id: str) -> Response:
+    with SessionLocal() as session:
+        payload = data_subject_payload(session, request_id)
+    content = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
+    return Response(
+        content=content,
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="data-subject-evidence-{request_id}.json"'},
+    )
+
+
+def serialize_control_lifecycle(item: ControlLifecycle) -> dict:
+    spec = CONTROL_LIFECYCLE_SPECS[item.kind]
+    progress = spec["statuses"].index(item.status) + 1
+    action_index = progress - 1
+    next_action = (
+        {"id": spec["actions"][action_index], "label": spec["labels"][action_index]}
+        if action_index < len(spec["actions"])
+        else None
+    )
+    return {
+        "id": item.id,
+        "kind": item.kind,
+        "name": item.name,
+        "owner": item.owner,
+        "status": item.status,
+        "steps": spec["steps"],
+        "progress": progress,
+        "next_action": next_action,
+        "data": item.data_json,
+        "evidence": item.evidence_json,
+        "updated_at": item.updated_at.isoformat(),
+    }
+
+
+@app.get("/api/control-lifecycles")
+def get_control_lifecycles() -> dict:
+    with SessionLocal() as session:
+        items = session.scalars(select(ControlLifecycle).order_by(ControlLifecycle.kind)).all()
+        serialized = [serialize_control_lifecycle(item) for item in items]
+        return {
+            "lifecycles": serialized,
+            "metrics": {
+                "active": len(serialized),
+                "completed": sum(item["next_action"] is None for item in serialized),
+                "evidence_items": sum(len(item["evidence"]) for item in serialized),
+                "guarded_transitions": sum(len(CONTROL_LIFECYCLE_SPECS[item["kind"]]["actions"]) for item in serialized),
+            },
+        }
+
+
+@app.post("/api/control-lifecycles/transition")
+def transition_control_lifecycle(request: ControlLifecycleTransitionRequest) -> dict:
+    spec = CONTROL_LIFECYCLE_SPECS[request.kind]
+    with SessionLocal() as session:
+        item = session.get(ControlLifecycle, spec["id"])
+        if not item:
+            raise HTTPException(status_code=404, detail="Control lifecycle not found")
+        progress = spec["statuses"].index(item.status) + 1
+        if progress > len(spec["actions"]):
+            raise HTTPException(status_code=409, detail="Lifecycle already completed.")
+        expected = spec["actions"][progress - 1]
+        if request.action != expected:
+            raise HTTPException(status_code=409, detail=f"Transition blocked. Expected {expected}.")
+        data = dict(item.data_json)
+        now = datetime.now(UTC)
+
+        if request.kind == "cost":
+            updates = {
+                "allocate_budget": {"allocated_usd": 4000},
+                "track_spend": {"spent_usd": 3650, "forecast_usd": 5450},
+                "trigger_cost_alert": {"alert": "Forecast exceeds allocated budget by 36%."},
+                "throttle_usage": {"throttle_percent": 25},
+                "optimize_cost": {"savings_percent": 28, "forecast_usd": 3924, "routing": "small-model-first"},
+            }[request.action]
+        elif request.kind == "model":
+            updates = {
+                "evaluate_model": {"eval_pass_rate": 98, "security_regressions": 0},
+                "shadow_deploy": {"shadow_requests": 500, "output_agreement_percent": 96},
+                "canary_release": {"canary_percent": 10, "error_rate_percent": 0.2},
+                "promote_model": {"baseline_model": data["candidate_model"], "promoted_by": request.operator_id},
+                "monitor_model": {"latency_delta_ms": 12, "risk_delta": 0, "monitoring": "healthy"},
+            }[request.action]
+        elif request.kind == "approval":
+            approval = session.get(Approval, data["approval_id"])
+            updates = {
+                "assign_reviewer": {"reviewer": request.operator_id},
+                "review_evidence": {"evidence_reviewed": True, "payload_digest": hashlib.sha256(json.dumps(approval.payload, sort_keys=True).encode()).hexdigest()[:16]},
+                "approve_action": {"decision": "approved", "decided_by": request.operator_id},
+                "execute_approved_action": {"execution_digest": hashlib.sha256(f"{approval.id}:executed".encode()).hexdigest()[:16], "executed": True},
+                "verify_execution": {"verified": True, "scope_match": True},
+            }[request.action]
+            if request.action == "approve_action":
+                approval.status = "approved"
+        else:
+            updates = {
+                "classify_source": {"classification": "internal"},
+                "scan_source": {"injection_scan": "passed", "pii_scan": "passed"},
+                "approve_source": {"approved_by": request.operator_id},
+                "index_source": {"chunks_indexed": 4, "index_version": "idx-2026-07"},
+                "review_source": {"review_due": "2027-01-12", "freshness": "current"},
+                "retire_source": {"retired": True, "removed_from_index": True},
+            }[request.action]
+
+        data.update(updates)
+        item.data_json = data
+        item.status = spec["statuses"][progress]
+        item.updated_at = now
+        evidence = list(item.evidence_json)
+        evidence.append({"action": request.action, "operator": request.operator_id, "at": now.isoformat(), "notes": redact_pii(request.notes), "result": updates})
+        item.evidence_json = evidence
+        audit(
+            session,
+            item.id,
+            request.operator_id,
+            f"control_{request.kind}_{request.action}",
+            item.status,
+            f"{spec['name']} advanced to {item.status}.",
+            {"lifecycle_id": item.id, "kind": item.kind, "action": request.action, "notes": redact_pii(request.notes)},
+        )
+        return serialize_control_lifecycle(item)
 
 
 def serialize_governance_record(record: GovernanceRecord) -> dict:
@@ -1108,6 +1818,19 @@ def call_tool(tool_name: str, request: ToolRequest) -> dict:
             audit(session, run_id, request.user_id, "tool_call", "denied", f"Rate limit exceeded for {tool_name}.")
             raise HTTPException(status_code=429, detail="Tool rate limit exceeded.")
         settings = TOOL_SCOPES[tool_name]
+        subject_key = request.payload.get("customer_id", "cus-1042")
+        restriction = active_data_subject_restriction(session, subject_key) if tool_name in {"get_customer_summary", "create_case_note"} else None
+        if restriction:
+            audit(
+                session,
+                run_id,
+                request.user_id,
+                "tool_call",
+                "denied",
+                f"{tool_name} blocked by active data-subject processing restriction.",
+                {"scope": settings["scope"], "request_id": restriction.id, "subject_ref": restriction.subject_ref, "policy_version": POLICY_VERSION},
+            )
+            raise HTTPException(status_code=403, detail="Processing restricted by active data-subject request.")
         if settings["approval"]:
             risk = assess_tool_risk(tool_name, request.payload, "approval_required")
             approval = Approval(id=f"appr_{uuid4().hex[:10]}", run_id=run_id, tool_name=tool_name, payload=request.payload)

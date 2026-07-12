@@ -273,3 +273,53 @@ curl -s http://127.0.0.1:8000/api/infra
 ```
 
 In Compose, a healthy Redis connection reports `{"mode":"redis","connected":true,"url":"redis://redis:6379/0"}`. Do not expose infrastructure status publicly without considering whether its deployment metadata is appropriate for that audience.
+
+## Governance Lifecycle
+
+Read the connected onboarding, runtime, incident, and policy-improvement state:
+
+```bash
+curl -s http://127.0.0.1:8000/api/lifecycle
+```
+
+Apply only the `next_action.id` returned by that response. Out-of-order transitions return `409 Conflict`.
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/api/lifecycle/transition \
+  -H "Content-Type: application/json" \
+  -d '{"action":"evaluate_agent","agent_id":"agent_customer_copilot","operator_id":"governance.reviewer","notes":"Onboarding controls reviewed."}'
+```
+
+The response contains the managed agent, linked incident and policy change, progress across all four loops, the next permitted action, and lifecycle audit evidence.
+
+## Data-Subject Lifecycle
+
+```bash
+curl -s http://127.0.0.1:8000/api/data-subject
+```
+
+Execute only the returned `next_action.id`:
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/api/data-subject/transition \
+  -H "Content-Type: application/json" \
+  -d '{"action":"export_data","request_id":"dsr_customer_1042","operator_id":"privacy.reviewer","notes":"Identity and request scope verified."}'
+```
+
+Once processing is restricted, customer read and regulated-write tools return `403`. Completion evidence is available from `GET /api/data-subject/{request_id}/evidence`.
+
+## Control Lifecycle Matrix
+
+```bash
+curl -s http://127.0.0.1:8000/api/control-lifecycles
+```
+
+Advance one cost, model, approval, or knowledge loop using its returned `next_action.id`:
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/api/control-lifecycles/transition \
+  -H "Content-Type: application/json" \
+  -d '{"kind":"model","action":"evaluate_model","operator_id":"model-risk.reviewer","notes":"Candidate passed the governed evaluation suite."}'
+```
+
+The API rejects skipped and repeated transitions with `409 Conflict` and records domain evidence plus a platform audit event for every accepted transition.

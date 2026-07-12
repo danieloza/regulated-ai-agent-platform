@@ -30,6 +30,9 @@ The goal is to demonstrate the engineering layer around AI agents: RAG, governan
 - Explainable risk scoring with low, medium, and high bands, weighted factors, and an operator review queue.
 - Redacted audit Evidence Pack export in JSON, Markdown, and PDF with policy version, timestamps, citations, approvals, and an integrity digest.
 - Controlled Governance Registry imports from a validated Excel template, with staged diffs, explicit apply, ownership metadata, and no implicit deletions.
+- Closed-loop Governance Lifecycle connecting agent onboarding, runtime risk detection, incident containment, policy replay, approval, rollout, and reactivation through guarded state transitions.
+- Data-subject request lifecycle with pseudonymous discovery, integrity-digested export, verified correction, enforced processing restriction, eligible-data anonymization, retention exceptions, and completion proof.
+- Shared Control Lifecycle Matrix for cost governance, model changes, human approvals, and governed knowledge, with 21 ordered transitions and domain-specific evidence.
 - Human approval workflow with approve, deny, more-info, operator comments, and audit records.
 - Audit timeline with PII redaction and run-details drill-down.
 - Document upload/indexing UI for TXT-style governance notes.

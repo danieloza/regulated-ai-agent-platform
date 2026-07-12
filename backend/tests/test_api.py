@@ -2,12 +2,21 @@ from fastapi.testclient import TestClient
 from pathlib import Path
 import pytest
 
-from app.main import GovernanceImport, GovernanceRecord, SessionLocal, app
+from app.main import Approval, AuditEvent, CONTROL_LIFECYCLE_SPECS, ControlLifecycle, Customer, DataSubjectRequest, GovernanceImport, GovernanceRecord, LifecycleIncident, LifecyclePolicyChange, ManagedAgent, SessionLocal, app
 
 
 @pytest.fixture()
 def client():
     with TestClient(app) as test_client:
+        with SessionLocal() as session:
+            item = session.get(DataSubjectRequest, "dsr_customer_1042")
+            if item:
+                item.status = "discovered"
+            customer = session.get(Customer, "cus-1042")
+            if customer:
+                customer.name = "Anna Kowalska"
+                customer.note = "Mortgage review, prefers secure inbox contact."
+            session.commit()
         yield test_client
 
 
@@ -22,6 +31,70 @@ def empty_governance_registry():
     clear_registry()
     yield
     clear_registry()
+
+
+@pytest.fixture()
+def reset_lifecycle():
+    def reset():
+        with SessionLocal() as session:
+            session.query(LifecyclePolicyChange).delete()
+            session.query(LifecycleIncident).delete()
+            session.query(AuditEvent).filter(AuditEvent.event_type.like("lifecycle_%")).delete(synchronize_session=False)
+            agent = session.get(ManagedAgent, "agent_customer_copilot")
+            if agent:
+                agent.status = "registered"
+                agent.evaluation_score = None
+                agent.cycle_count = 0
+            session.commit()
+
+    reset()
+    yield
+    reset()
+
+
+@pytest.fixture()
+def reset_data_subject_request():
+    def reset():
+        with SessionLocal() as session:
+            item = session.get(DataSubjectRequest, "dsr_customer_1042")
+            if item:
+                item.status = "discovered"
+                item.export_digest = None
+                item.correction_summary = ""
+                item.restriction_scope = ""
+                item.deletion_summary = ""
+                item.proof_json = {}
+            customer = session.get(Customer, "cus-1042")
+            if customer:
+                customer.name = "Anna Kowalska"
+                customer.note = "Mortgage review, prefers secure inbox contact."
+            session.query(AuditEvent).filter(AuditEvent.event_type.like("data_subject_%")).delete(synchronize_session=False)
+            session.commit()
+
+    reset()
+    yield
+    reset()
+
+
+@pytest.fixture()
+def reset_control_lifecycles():
+    def reset():
+        with SessionLocal() as session:
+            for kind, spec in CONTROL_LIFECYCLE_SPECS.items():
+                item = session.get(ControlLifecycle, spec["id"])
+                if item:
+                    item.status = spec["statuses"][0]
+                    item.data_json = dict(spec["initial"])
+                    item.evidence_json = []
+            approval = session.get(Approval, "appr_lifecycle_demo")
+            if approval:
+                approval.status = "pending"
+            session.query(AuditEvent).filter(AuditEvent.event_type.like("control_%")).delete(synchronize_session=False)
+            session.commit()
+
+    reset()
+    yield
+    reset()
 
 
 def test_health_endpoint(client):
@@ -279,3 +352,114 @@ def test_governance_registry_blocks_invalid_workbook_apply(client, empty_governa
     assert payload["summary"]["can_apply"] is False
     apply = client.post(f"/api/governance/imports/{payload['id']}/apply", json={"operator_id": "registry.reviewer"})
     assert apply.status_code == 409
+
+
+def test_four_connected_governance_lifecycle_loops(client, reset_lifecycle):
+    initial = client.get("/api/lifecycle")
+    assert initial.status_code == 200
+    assert initial.json()["agent"]["status"] == "registered"
+    assert initial.json()["next_action"]["id"] == "evaluate_agent"
+
+    blocked = client.post("/api/lifecycle/transition", json={"action": "activate_agent"})
+    assert blocked.status_code == 409
+
+    actions = [
+        "evaluate_agent",
+        "activate_agent",
+        "detect_runtime_risk",
+        "triage_incident",
+        "contain_incident",
+        "mitigate_incident",
+        "draft_policy",
+        "replay_policy",
+        "approve_policy",
+        "rollout_policy",
+    ]
+    payload = None
+    for action in actions:
+        response = client.post(
+            "/api/lifecycle/transition",
+            json={"action": action, "operator_id": "governance.reviewer", "notes": "Validated lifecycle transition."},
+        )
+        assert response.status_code == 200, response.text
+        payload = response.json()
+
+    assert payload["agent"]["status"] == "active"
+    assert payload["agent"]["cycle_count"] == 1
+    assert payload["incident"]["status"] == "closed"
+    assert payload["policy_change"]["status"] == "rolled_out"
+    assert payload["policy_change"]["replay_summary"]["total"] > 0
+    assert payload["next_action"]["id"] == "detect_runtime_risk"
+    assert [loop["progress"] for loop in payload["loops"]] == [3, 3, 4, 4]
+
+
+def test_data_subject_lifecycle_enforces_restriction_and_generates_proof(client, reset_data_subject_request):
+    initial = client.get("/api/data-subject")
+    assert initial.status_code == 200
+    assert initial.json()["status"] == "discovered"
+    assert initial.json()["next_action"]["id"] == "export_data"
+    assert "cus-1042" not in initial.json()["subject_ref"]
+
+    blocked = client.post("/api/data-subject/transition", json={"action": "delete_data"})
+    assert blocked.status_code == 409
+
+    for action in ["export_data", "correct_data", "restrict_processing"]:
+        response = client.post(
+            "/api/data-subject/transition",
+            json={"action": action, "operator_id": "privacy.reviewer", "notes": "Verified privacy operation."},
+        )
+        assert response.status_code == 200, response.text
+
+    restricted_tool = client.post(
+        "/api/tools/get_customer_summary",
+        json={"user_id": "operator.demo", "payload": {"customer_id": "cus-1042"}},
+    )
+    assert restricted_tool.status_code == 403
+
+    for action in ["delete_data", "generate_proof"]:
+        response = client.post(
+            "/api/data-subject/transition",
+            json={"action": action, "operator_id": "privacy.reviewer", "notes": "Verified privacy operation."},
+        )
+        assert response.status_code == 200, response.text
+
+    payload = response.json()
+    assert payload["status"] == "proved"
+    assert payload["progress"] == 6
+    assert len(payload["proof"]["proof_digest"]) == 64
+    assert payload["retention_exceptions"]
+
+    evidence = client.get("/api/data-subject/dsr_customer_1042/evidence")
+    assert evidence.status_code == 200
+    assert evidence.headers["content-type"] == "application/json"
+    assert "data-subject-evidence-dsr_customer_1042.json" in evidence.headers["content-disposition"]
+
+
+def test_control_lifecycle_matrix_completes_all_four_domains(client, reset_control_lifecycles):
+    initial = client.get("/api/control-lifecycles")
+    assert initial.status_code == 200
+    assert initial.json()["metrics"]["active"] == 4
+    assert initial.json()["metrics"]["guarded_transitions"] == 21
+
+    blocked = client.post(
+        "/api/control-lifecycles/transition",
+        json={"kind": "cost", "action": "optimize_cost"},
+    )
+    assert blocked.status_code == 409
+
+    completed = {}
+    for kind, spec in CONTROL_LIFECYCLE_SPECS.items():
+        for action in spec["actions"]:
+            response = client.post(
+                "/api/control-lifecycles/transition",
+                json={"kind": kind, "action": action, "operator_id": "governance.reviewer", "notes": "Verified control transition."},
+            )
+            assert response.status_code == 200, response.text
+        completed[kind] = response.json()
+
+    assert all(item["next_action"] is None for item in completed.values())
+    assert completed["cost"]["data"]["savings_percent"] == 28
+    assert completed["model"]["data"]["monitoring"] == "healthy"
+    assert completed["approval"]["data"]["scope_match"] is True
+    assert completed["knowledge"]["data"]["removed_from_index"] is True
+    assert sum(len(item["evidence"]) for item in completed.values()) == 21

@@ -44,6 +44,9 @@ const sections = [
   ["Safe RAG", "safe-rag", FileText],
   ["Prompt Injection Lab", "prompt-lab", Beaker],
   ["Document Upload", "document-upload", Upload],
+  ["Governance Lifecycle", "governance-lifecycle", ShieldCheck],
+  ["Data Subject Requests", "data-subject-requests", Fingerprint],
+  ["Control Lifecycle Matrix", "control-lifecycle-matrix", Workflow],
   ["Governance Registry", "governance-registry", FileSpreadsheet],
   ["Tool Gateway", "tool-gateway", Workflow],
   ["Policy Engine", "policy-engine", Gavel],
@@ -58,6 +61,20 @@ function decisionIcon(decision) {
   if (decision === "allowed" || decision === "approved") return <CheckCircle2 size={16} />;
   if (decision === "denied") return <OctagonX size={16} />;
   return <AlertTriangle size={16} />;
+}
+
+function lifecycleIcon(loopId) {
+  if (loopId === "onboarding") return <UserCheck size={18} />;
+  if (loopId === "runtime") return <Activity size={18} />;
+  if (loopId === "incident") return <ShieldAlert size={18} />;
+  return <GitCompareArrows size={18} />;
+}
+
+function controlLifecycleIcon(kind) {
+  if (kind === "cost") return <Database size={18} />;
+  if (kind === "model") return <GitCompareArrows size={18} />;
+  if (kind === "approval") return <UserCheck size={18} />;
+  return <FileText size={18} />;
 }
 
 function App() {
@@ -82,6 +99,15 @@ function App() {
   const [governancePreview, setGovernancePreview] = useState(null);
   const [governanceFile, setGovernanceFile] = useState(null);
   const [governanceBusy, setGovernanceBusy] = useState("");
+  const [lifecycle, setLifecycle] = useState(null);
+  const [lifecycleBusy, setLifecycleBusy] = useState(false);
+  const [lifecycleNotes, setLifecycleNotes] = useState("");
+  const [dataSubject, setDataSubject] = useState(null);
+  const [dataSubjectBusy, setDataSubjectBusy] = useState("");
+  const [dataSubjectNotes, setDataSubjectNotes] = useState("");
+  const [controlLifecycles, setControlLifecycles] = useState(null);
+  const [selectedControlKind, setSelectedControlKind] = useState("cost");
+  const [controlLifecycleBusy, setControlLifecycleBusy] = useState("");
   const governanceInputRef = useRef(null);
   const [busyAction, setBusyAction] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
@@ -129,10 +155,149 @@ function App() {
     }
   }
 
+  async function loadLifecycle() {
+    try {
+      const response = await fetch(`${API}/api/lifecycle`);
+      if (!response.ok) throw new Error(`Governance lifecycle request failed: ${response.status}`);
+      setLifecycle(await response.json());
+    } catch (error) {
+      setErrorMessage(error.message);
+    }
+  }
+
+  async function advanceLifecycle() {
+    if (!lifecycle?.next_action?.id) return;
+    setLifecycleBusy(true);
+    setErrorMessage("");
+    setStatusMessage("");
+    try {
+      const response = await fetch(`${API}/api/lifecycle/transition`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: lifecycle.next_action.id,
+          agent_id: lifecycle.agent.id,
+          operator_id: "governance.reviewer",
+          notes: lifecycleNotes,
+        }),
+      });
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.detail ?? `Lifecycle transition failed: ${response.status}`);
+      }
+      const payload = await response.json();
+      setLifecycle(payload);
+      setLifecycleNotes("");
+      setStatusMessage(`${payload.next_action.label} is now the next governed action.`);
+      refresh();
+    } catch (error) {
+      setErrorMessage(error.message);
+    } finally {
+      setLifecycleBusy(false);
+    }
+  }
+
+  async function loadDataSubject() {
+    try {
+      const response = await fetch(`${API}/api/data-subject`);
+      if (!response.ok) throw new Error(`Data-subject request failed: ${response.status}`);
+      setDataSubject(await response.json());
+    } catch (error) {
+      setErrorMessage(error.message);
+    }
+  }
+
+  async function advanceDataSubject() {
+    if (!dataSubject?.next_action?.id) return;
+    setDataSubjectBusy("transition");
+    setErrorMessage("");
+    try {
+      const response = await fetch(`${API}/api/data-subject/transition`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: dataSubject.next_action.id, request_id: dataSubject.id, operator_id: "privacy.reviewer", notes: dataSubjectNotes }),
+      });
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.detail ?? `Data-subject transition failed: ${response.status}`);
+      }
+      const payload = await response.json();
+      setDataSubject(payload);
+      setDataSubjectNotes("");
+      setStatusMessage(payload.next_action ? `${payload.next_action.label} is now the next privacy action.` : "Data-subject lifecycle completed with integrity proof.");
+    } catch (error) {
+      setErrorMessage(error.message);
+    } finally {
+      setDataSubjectBusy("");
+    }
+  }
+
+  async function downloadDataSubjectEvidence() {
+    if (!dataSubject) return;
+    setDataSubjectBusy("download");
+    try {
+      const response = await fetch(`${API}/api/data-subject/${dataSubject.id}/evidence`);
+      if (!response.ok) throw new Error(`Evidence export failed: ${response.status}`);
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `data-subject-evidence-${dataSubject.id}.json`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+      setStatusMessage("Data-subject evidence exported.");
+    } catch (error) {
+      setErrorMessage(error.message);
+    } finally {
+      setDataSubjectBusy("");
+    }
+  }
+
+  async function loadControlLifecycles() {
+    try {
+      const response = await fetch(`${API}/api/control-lifecycles`);
+      if (!response.ok) throw new Error(`Control lifecycles request failed: ${response.status}`);
+      setControlLifecycles(await response.json());
+    } catch (error) {
+      setErrorMessage(error.message);
+    }
+  }
+
+  async function advanceControlLifecycle(item) {
+    if (!item?.next_action) return;
+    setControlLifecycleBusy(item.kind);
+    setErrorMessage("");
+    try {
+      const response = await fetch(`${API}/api/control-lifecycles/transition`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kind: item.kind, action: item.next_action.id, operator_id: "governance.reviewer", notes: "Verified in Control Lifecycle Matrix." }),
+      });
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.detail ?? `Control transition failed: ${response.status}`);
+      }
+      const updated = await response.json();
+      setControlLifecycles((current) => ({
+        ...current,
+        lifecycles: current.lifecycles.map((existing) => existing.kind === updated.kind ? updated : existing),
+        metrics: { ...current.metrics, evidence_items: current.metrics.evidence_items + 1, completed: current.metrics.completed + (updated.next_action ? 0 : 1) },
+      }));
+      setStatusMessage(updated.next_action ? `${updated.name}: ${updated.next_action.label} is next.` : `${updated.name} completed with full evidence.`);
+    } catch (error) {
+      setErrorMessage(error.message);
+    } finally {
+      setControlLifecycleBusy("");
+    }
+  }
+
   useEffect(() => {
     refresh();
     loadAttacks();
     loadGovernance();
+    loadLifecycle();
+    loadDataSubject();
+    loadControlLifecycles();
   }, []);
 
   async function askAssistant(nextQuery = query) {
@@ -376,6 +541,10 @@ function App() {
         : right.score - left.score || new Date(right.created_at).getTime() - new Date(left.created_at).getTime()
     ));
   }, [dashboard, riskFilter, riskSort]);
+  const selectedControl = useMemo(
+    () => controlLifecycles?.lifecycles?.find((item) => item.kind === selectedControlKind) ?? null,
+    [controlLifecycles, selectedControlKind],
+  );
 
   function goToSection(sectionId) {
     setActiveSection(sectionId);
@@ -511,6 +680,244 @@ function App() {
             {uploadResult && (
               <div className={`lab-result ${uploadResult.risk_label === "clean" ? "passed" : "failed"}`}>
                 {uploadResult.risk_label} - document #{uploadResult.id}
+              </div>
+            )}
+          </section>
+
+          <section className="panel lifecycle-panel" id="governance-lifecycle">
+            <div className="panel-heading lifecycle-heading">
+              <div>
+                <p className="section-kicker">Closed-loop governance</p>
+                <h2>Governance Lifecycle</h2>
+                <p>Onboard, govern, contain and improve one managed agent through auditable state transitions.</p>
+              </div>
+              <div className={`lifecycle-state ${lifecycle?.agent?.status ?? "loading"}`}>
+                <span className="pulse" />
+                {lifecycle?.agent?.status?.replace("_", " ") ?? "loading state"}
+              </div>
+            </div>
+
+            <div className="lifecycle-command-bar">
+              <div className="managed-agent-identity">
+                <div className="agent-mark"><ShieldCheck size={21} /></div>
+                <div>
+                  <span>Managed agent</span>
+                  <strong>{lifecycle?.agent?.name ?? "Customer Operations Copilot"}</strong>
+                  <small>{lifecycle?.agent?.id ?? "agent_customer_copilot"} · owner {lifecycle?.agent?.owner ?? "AI Governance"}</small>
+                </div>
+              </div>
+              <div className="lifecycle-kpis">
+                <div><span>Evaluation</span><strong>{lifecycle?.agent?.evaluation_score == null ? "pending" : `${lifecycle.agent.evaluation_score}%`}</strong></div>
+                <div><span>Scopes</span><strong>{lifecycle?.agent?.scopes?.length ?? 0}</strong></div>
+                <div><span>Closed loops</span><strong>{lifecycle?.agent?.cycle_count ?? 0}</strong></div>
+              </div>
+            </div>
+
+            <div className="lifecycle-loops" aria-label="Four connected governance lifecycle loops">
+              {(lifecycle?.loops ?? []).map((loop, loopIndex) => (
+                <article className={`lifecycle-loop loop-${loop.id}`} key={loop.id}>
+                  <div className="loop-title">
+                    <span>{lifecycleIcon(loop.id)}</span>
+                    <div><small>0{loopIndex + 1}</small><strong>{loop.name}</strong></div>
+                    <b>{loop.progress}/{loop.steps.length}</b>
+                  </div>
+                  <div className="loop-progress" aria-label={`${loop.name}: ${loop.progress} of ${loop.steps.length} steps complete`}>
+                    <i style={{ width: `${(loop.progress / loop.steps.length) * 100}%` }} />
+                  </div>
+                  <div className="loop-steps">
+                    {loop.steps.map((step, index) => (
+                      <div className={loop.progress > index ? "complete" : loop.progress === index ? "current" : "pending"} key={step}>
+                        <span>{loop.progress > index ? <CheckCircle2 size={13} /> : index + 1}</span>{step}
+                      </div>
+                    ))}
+                  </div>
+                  {loopIndex < 3 && <ChevronRight className="loop-connector" size={18} aria-hidden="true" />}
+                </article>
+              ))}
+            </div>
+
+            <div className="lifecycle-workspace">
+              <article className="next-action-card">
+                <div className="next-action-label"><Play size={15} /> Next governed action</div>
+                <h3>{lifecycle?.next_action?.label ?? "Loading lifecycle state"}</h3>
+                <p>The backend verifies the current state before applying this transition and records the operator decision in the audit trail.</p>
+                <label htmlFor="lifecycle-notes">Operator evidence note <span>optional</span></label>
+                <textarea id="lifecycle-notes" value={lifecycleNotes} onChange={(event) => setLifecycleNotes(event.target.value)} placeholder="Add mitigation, review or rollout context..." />
+                <button className="lifecycle-advance" type="button" disabled={!lifecycle || lifecycleBusy} onClick={advanceLifecycle}>
+                  {lifecycleBusy ? <TimerReset size={17} /> : <ChevronRight size={17} />}
+                  {lifecycleBusy ? "Applying guarded transition..." : lifecycle?.next_action?.label ?? "Waiting for state"}
+                </button>
+              </article>
+
+              <div className="lifecycle-context">
+                <article className={`context-card ${lifecycle?.incident ? "alert" : "quiet"}`}>
+                  <div><ShieldAlert size={17} /><span>Incident response</span></div>
+                  <strong>{lifecycle?.incident ? `${lifecycle.incident.severity} · ${lifecycle.incident.status}` : "No open incident"}</strong>
+                  <p>{lifecycle?.incident?.summary ?? "Runtime signals are monitored against policy and explainable risk thresholds."}</p>
+                  {lifecycle?.incident && <code>{lifecycle.incident.id} · {lifecycle.incident.owner}</code>}
+                </article>
+                <article className={`context-card ${lifecycle?.policy_change ? "policy" : "quiet"}`}>
+                  <div><GitCompareArrows size={17} /><span>Policy improvement</span></div>
+                  <strong>{lifecycle?.policy_change ? `${lifecycle.policy_change.version} · ${lifecycle.policy_change.status}` : "No candidate policy"}</strong>
+                  <p>{lifecycle?.policy_change?.replay_summary?.total ? `Replay covered ${lifecycle.policy_change.replay_summary.total} adversarial cases with ${lifecycle.policy_change.replay_summary.changed} decision changes.` : "An incident mitigation can become a replayed and approved policy candidate."}</p>
+                  {lifecycle?.policy_change?.approved_by && <code>approved by {lifecycle.policy_change.approved_by}</code>}
+                </article>
+                <article className="context-card activity-card">
+                  <div><Fingerprint size={17} /><span>Lifecycle evidence</span></div>
+                  <strong>{lifecycle?.activity?.length ?? 0} recorded transitions</strong>
+                  <div className="lifecycle-activity-list">
+                    {(lifecycle?.activity ?? []).slice(0, 3).map((event) => (
+                      <p key={event.id}><i /> <span>{event.summary}</span><time>{new Date(event.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time></p>
+                    ))}
+                  </div>
+                </article>
+              </div>
+            </div>
+          </section>
+
+          <section className="panel data-subject-panel" id="data-subject-requests">
+            <div className="panel-heading data-subject-heading">
+              <div>
+                <p className="section-kicker privacy">Privacy operations</p>
+                <h2>Data Subject Requests</h2>
+                <p>Discover, fulfill and prove subject rights without exposing identity data in the operator console.</p>
+              </div>
+              <div className={`data-subject-state ${dataSubject?.status ?? "loading"}`}>
+                <Fingerprint size={15} /> {dataSubject?.status ?? "loading"}
+              </div>
+            </div>
+
+            <div className="data-subject-summary">
+              <div><span>Request</span><strong>{dataSubject?.id ?? "dsr_customer_1042"}</strong></div>
+              <div><span>Pseudonymous subject</span><strong>{dataSubject?.subject_ref ?? "loading"}</strong></div>
+              <div><span>Jurisdiction</span><strong>{dataSubject?.jurisdiction ?? "GDPR"}</strong></div>
+              <div><span>Owner</span><strong>{dataSubject?.owner ?? "Privacy Operations"}</strong></div>
+            </div>
+
+            <div className="data-subject-steps" aria-label="Data-subject lifecycle">
+              {(dataSubject?.steps ?? ["Discover", "Export", "Correct", "Restrict", "Delete", "Prove"]).map((step, index) => {
+                const progress = dataSubject?.progress ?? 0;
+                const state = progress > index ? "complete" : progress === index ? "current" : "pending";
+                return (
+                  <div className={state} key={step}>
+                    <span>{progress > index ? <CheckCircle2 size={14} /> : String(index + 1).padStart(2, "0")}</span>
+                    <strong>{step}</strong>
+                    {index < 5 && <ChevronRight size={14} />}
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="data-subject-workspace">
+              <article className="data-map-card">
+                <div className="privacy-card-title"><Search size={16} /><div><strong>Discovered data map</strong><p>Each system receives an explicit treatment decision.</p></div></div>
+                <div className="data-map-table" role="table" aria-label="Discovered subject data locations">
+                  {(dataSubject?.systems ?? []).map((system) => (
+                    <div role="row" key={system.system}>
+                      <span role="cell"><strong>{system.system.replace("_", " ")}</strong><small>{system.category}</small></span>
+                      <code role="cell" className={system.action}>{system.action.replace("_", " ")}</code>
+                    </div>
+                  ))}
+                </div>
+                <div className="retention-exception"><LockKeyhole size={15} /><span><strong>Retention exception</strong> Redacted audit evidence remains available for compliance and dispute resolution.</span></div>
+              </article>
+
+              <article className="privacy-action-card">
+                <div className="privacy-card-title"><Gavel size={16} /><div><strong>Next controlled action</strong><p>Only the server-authorized transition can be executed.</p></div></div>
+                <h3>{dataSubject?.next_action?.label ?? "Lifecycle completed"}</h3>
+                <p className="privacy-action-copy">
+                  {dataSubject?.next_action?.id === "delete_data" ? "This operation anonymizes eligible profile data. Redacted compliance evidence is retained under the declared exception." : "The result is recorded with operator attribution, timestamp and integrity metadata."}
+                </p>
+                <label htmlFor="data-subject-notes">Operator justification <span>optional</span></label>
+                <textarea id="data-subject-notes" value={dataSubjectNotes} onChange={(event) => setDataSubjectNotes(event.target.value)} placeholder="Add verification, correction or legal-basis context..." />
+                {dataSubject?.next_action ? (
+                  <button className={`privacy-advance ${dataSubject.next_action.id === "delete_data" ? "destructive" : ""}`} type="button" disabled={Boolean(dataSubjectBusy)} onClick={advanceDataSubject}>
+                    {dataSubjectBusy === "transition" ? <TimerReset size={16} /> : <ChevronRight size={16} />}
+                    {dataSubjectBusy === "transition" ? "Applying privacy control..." : dataSubject.next_action.label}
+                  </button>
+                ) : (
+                  <button className="privacy-advance completed" type="button" disabled={dataSubjectBusy === "download"} onClick={downloadDataSubjectEvidence}>
+                    <Download size={16} /> {dataSubjectBusy === "download" ? "Preparing evidence..." : "Export completion evidence"}
+                  </button>
+                )}
+              </article>
+
+              <article className="privacy-evidence-card">
+                <div className="privacy-card-title"><Fingerprint size={16} /><div><strong>Request evidence</strong><p>Current artifacts and recent state transitions.</p></div></div>
+                <div className="privacy-artifacts">
+                  <div><span>Export digest</span><code>{dataSubject?.export_digest?.slice(0, 16) ?? "pending"}</code></div>
+                  <div><span>Proof digest</span><code>{dataSubject?.proof?.proof_digest?.slice(0, 16) ?? "pending"}</code></div>
+                </div>
+                <div className="privacy-activity">
+                  {(dataSubject?.activity ?? []).slice(0, 4).map((event) => (
+                    <p key={event.id}><i /><span>{event.summary}</span><time>{new Date(event.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time></p>
+                  ))}
+                  {!dataSubject?.activity?.length && <p className="privacy-empty">No operator transitions recorded yet.</p>}
+                </div>
+              </article>
+            </div>
+          </section>
+
+          <section className="panel control-matrix-panel" id="control-lifecycle-matrix">
+            <div className="panel-heading control-matrix-heading">
+              <div>
+                <p className="section-kicker matrix">Operational controls</p>
+                <h2>Control Lifecycle Matrix</h2>
+                <p>Four governed change loops with domain-specific guards, evidence and operational outcomes.</p>
+              </div>
+              <div className="matrix-metrics">
+                <span><strong>{controlLifecycles?.metrics?.active ?? 4}</strong> lifecycles</span>
+                <span><strong>{controlLifecycles?.metrics?.guarded_transitions ?? 21}</strong> guards</span>
+                <span><strong>{controlLifecycles?.metrics?.evidence_items ?? 0}</strong> evidence</span>
+              </div>
+            </div>
+
+            <div className="control-lifecycle-grid">
+              {(controlLifecycles?.lifecycles ?? []).map((item) => (
+                <button className={`control-lifecycle-card ${item.kind} ${selectedControlKind === item.kind ? "selected" : ""}`} type="button" key={item.kind} onClick={() => setSelectedControlKind(item.kind)}>
+                  <div className="control-card-heading">
+                    <span>{controlLifecycleIcon(item.kind)}</span>
+                    <div><strong>{item.name}</strong><small>{item.owner}</small></div>
+                    <code>{item.status}</code>
+                  </div>
+                  <div className="control-progress"><i style={{ width: `${(item.progress / item.steps.length) * 100}%` }} /></div>
+                  <div className="control-step-dots" aria-label={`${item.name}: ${item.progress} of ${item.steps.length} steps complete`}>
+                    {item.steps.map((step, index) => <span className={item.progress > index ? "complete" : item.progress === index ? "current" : ""} title={step} key={step}>{index + 1}</span>)}
+                  </div>
+                  <p>{item.next_action?.label ?? "Lifecycle complete"}</p>
+                </button>
+              ))}
+            </div>
+
+            {selectedControl && (
+              <div className={`control-detail ${selectedControl.kind}`}>
+                <div className="control-detail-main">
+                  <div className="control-detail-title">{controlLifecycleIcon(selectedControl.kind)}<div><span>Selected control loop</span><h3>{selectedControl.name}</h3></div></div>
+                  <div className="control-stage-track">
+                    {selectedControl.steps.map((step, index) => (
+                      <div className={selectedControl.progress > index ? "complete" : selectedControl.progress === index ? "current" : "pending"} key={step}>
+                        <span>{selectedControl.progress > index ? <CheckCircle2 size={13} /> : index + 1}</span><strong>{step}</strong>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="control-evidence-summary">
+                  <span>Current evidence</span>
+                  <div className="control-data-list">
+                    {Object.entries(selectedControl.data).slice(0, 6).map(([key, value]) => (
+                      <p key={key}><span>{key.replaceAll("_", " ")}</span><code>{value == null ? "pending" : String(value)}</code></p>
+                    ))}
+                  </div>
+                </div>
+                <div className="control-next-action">
+                  <span>Next guarded transition</span>
+                  <strong>{selectedControl.next_action?.label ?? "Completed"}</strong>
+                  <p>{selectedControl.evidence.length} evidence items recorded with operator and timestamp.</p>
+                  <button type="button" disabled={!selectedControl.next_action || Boolean(controlLifecycleBusy)} onClick={() => advanceControlLifecycle(selectedControl)}>
+                    {controlLifecycleBusy === selectedControl.kind ? <TimerReset size={16} /> : selectedControl.next_action ? <ChevronRight size={16} /> : <CheckCircle2 size={16} />}
+                    {controlLifecycleBusy === selectedControl.kind ? "Applying control..." : selectedControl.next_action?.label ?? "Lifecycle complete"}
+                  </button>
+                </div>
               </div>
             )}
           </section>
