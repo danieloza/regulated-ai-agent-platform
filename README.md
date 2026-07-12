@@ -16,7 +16,7 @@ Backend platform for safe AI assistants in banking, medical, legal, and enterpri
 
 This is not a chatbot with PDF.
 
-It is a platform for controlling AI agents in regulated environments. It shows how an AI assistant can answer from business documents while staying behind controlled APIs, policy checks, audit logs, scoped tools, human approvals, PII redaction, and deterministic backend safeguards.
+It is a governance and operations control plane for AI agents in regulated environments. It combines source-bound RAG and scoped execution with closed-loop governance, privacy operations, policy replay, audit evidence, and a secured enterprise API surface.
 
 The goal is to demonstrate the engineering layer around AI agents: RAG, governance, security, auditability, approval workflows, race-condition-safe writes, Redis-backed rate limits, Docker, Kubernetes, and security tests.
 
@@ -44,9 +44,50 @@ The goal is to demonstrate the engineering layer around AI agents: RAG, governan
 - Security eval suite for benign requests, prompt-injection attempts, secret exfiltration, shell access, and regulated writes.
 - Premium operator dashboard built with React and Vite.
 
+## Governance Lifecycle Coverage
+
+| Lifecycle | Controlled flow | Operational outcome |
+| --- | --- | --- |
+| Agent governance | Register → Evaluate → Activate → Detect → Contain → Improve | An incident can drive a replayed policy change, controlled rollout, and safe reactivation. |
+| Data subject | Discover → Export → Correct → Restrict → Delete → Prove | Subject rights are fulfilled with pseudonymous references, enforced processing restrictions, and completion evidence. |
+| Cost governance | Budget → Allocate → Track → Alert → Throttle → Optimize | Forecast overruns produce explicit throttling and model-routing evidence. |
+| Model change | Propose → Evaluate → Shadow → Canary → Promote → Monitor | Candidate models progress through measured rollout stages instead of direct replacement. |
+| Human approval | Request → Assign → Review → Decide → Execute → Verify | Execution is bound to reviewed evidence and verified against the approved scope. |
+| Knowledge | Ingest → Classify → Scan → Approve → Index → Review → Retire | Sources are scanned, approved, versioned, reviewed, and removed from retrieval when retired. |
+
 ## Stack
 
 Python, FastAPI, SQLAlchemy, Pydantic, SQLite, LangGraph, Redis, deterministic mock embeddings, React, Vite, lucide-react, Docker, Kubernetes, pytest.
+
+## Enterprise API v1
+
+The versioned `/api/v1` surface is separate from the local/demo endpoints used by the operator UI. It adds:
+
+- SHA-256 API credential verification with no plaintext keys stored by the application,
+- role hierarchy: `viewer`, `operator`, `approver`, and `admin`,
+- explicit `X-Tenant-ID` authorization and resource-tenant boundaries,
+- mandatory `Idempotency-Key` headers for mutations,
+- paginated lifecycle, audit, and outbox resources,
+- authenticated actor attribution and pending integration outbox events.
+
+Enterprise credentials are disabled by default. Inject `ENTERPRISE_API_CREDENTIALS` through a secret manager using the schema documented in [API examples](docs/api-examples.md); do not commit raw keys.
+
+```bash
+curl -s http://127.0.0.1:8000/api/v1/capabilities \
+  -H "Authorization: Bearer $ENTERPRISE_API_KEY" \
+  -H "X-Tenant-ID: demo"
+```
+
+Mutation example:
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/api/v1/control-lifecycles/transitions \
+  -H "Authorization: Bearer $ENTERPRISE_API_KEY" \
+  -H "X-Tenant-ID: demo" \
+  -H "Idempotency-Key: model-evaluation-20260712-001" \
+  -H "Content-Type: application/json" \
+  -d '{"kind":"model","action":"evaluate_model","notes":"Candidate passed governed evaluation."}'
+```
 
 ## License
 
@@ -83,13 +124,14 @@ http://127.0.0.1:5173
 
 Use this flow when presenting the project in an interview:
 
-1. Open the dashboard and show that the app is not a generic PDF chatbot: it has RAG, policy, tools, approvals, audit, ledger, Redis, Docker, and Kubernetes surfaces.
-2. Go to `Prompt Injection Lab` and run the instruction-override attack. Show the `denied` policy decision and the audit event.
-3. Open `Run Details` for that run. Walk through the question, policy decision, retrieval/tool trace, audit timeline, and final answer.
-4. Upload or inspect a malicious document that says to ignore instructions or reveal secrets. Ask a question that retrieves it and show that the answer remains safe/source-bound.
-5. Go to `Tool Gateway` and call a read-only tool such as `get_customer_summary`. Then call a regulated write such as `create_case_note` and show `approval_required`.
-6. Go to `Approvals`, add an operator comment, and approve/deny/request more information. Show that the decision is recorded in the run/audit timeline.
-7. Go to `Ledger Demo` and compare unsafe read-modify-write with the atomic SQL update:
+1. Open `Governance Lifecycle`. Advance onboarding, simulate a high-risk signal, and show that the only permitted next action is incident triage.
+2. Continue through containment, mitigation, policy draft, security replay, approval, and rollout. Show the evidence timeline and safe agent reactivation.
+3. Open `Data Subject Requests`. Show pseudonymous discovery, integrity-digested export, tool-level processing restriction, anonymization, and completion proof.
+4. Open `Control Lifecycle Matrix`. Compare cost, model change, human approval, and knowledge governance as separate guarded loops using one lifecycle engine.
+5. Go to `Prompt Injection Lab`, run an instruction-override attack, and inspect the denied run with risk factors and audit evidence.
+6. Use `Tool Gateway` to compare an allowed read with a regulated write that becomes `approval_required`.
+7. Show `/api/v1` authentication, tenant context, RBAC, idempotency replay, and the generated integration outbox event.
+8. Go to `Ledger Demo` and compare unsafe read-modify-write with the atomic SQL update:
 
 ```sql
 UPDATE accounts
@@ -159,20 +201,26 @@ The Compose PostgreSQL profile has a `dev-only-change-me` fallback so `docker co
 
 ```mermaid
 flowchart LR
-  User["Operator / Recruiter"] --> UI["React Operator Console"]
-  UI --> API["FastAPI Backend"]
+  Operator["Operator"] --> UI["React Operator Console"]
+  Client["Enterprise API Client"] --> Gateway["/api/v1 Auth + RBAC + Tenant + Idempotency"]
+  UI --> API["FastAPI Control Plane"]
+  Gateway --> API
+  API --> Lifecycles["Governance Lifecycle Engine"]
   API --> Policy["Policy Engine"]
   API --> RAG["Secure RAG Pipeline"]
   API --> Tools["Scoped Tool Gateway"]
   API --> Approvals["Human Approval Workflow"]
   API --> Audit["Audit Trail"]
   API --> Ledger["Ledger Demo"]
+  API --> Outbox["Integration Outbox"]
   Tools --> Redis["Redis Rate Limit Store"]
   API --> DB[("SQLite default / PostgreSQL-ready")]
   RAG --> DB
   Audit --> DB
   Approvals --> DB
   Ledger --> DB
+  Lifecycles --> DB
+  Outbox --> DB
   Policy --> Evals["Security Evals"]
 ```
 
