@@ -171,6 +171,23 @@ Without `DATABASE_URL`, the backend uses SQLite for a zero-config demo.
 Production deployments should use PostgreSQL, managed Redis, and secrets injected from the deployment platform. This repo includes `.env.example`; real secrets should stay in local environment variables, CI/CD secret stores, or Kubernetes Secrets managed outside source control.
 The Compose PostgreSQL profile has a `dev-only-change-me` fallback so `docker compose config` works from a clean checkout; replace it for any real environment.
 
+## Path to Enterprise Deployment
+
+This repository provides a production-shaped governance architecture, but a company deployment must be adapted to one specific operating environment and business workflow.
+
+The recommended path is:
+
+1. Select one measurable business process with named business and technical owners.
+2. Connect approved enterprise systems through scoped, audited adapters rather than exposing credentials to the agent.
+3. Replace demo identities with corporate OIDC/SSO, group-based RBAC, MFA, and service principals.
+4. Move runtime state to PostgreSQL, managed Redis, durable workers/queues, centralized telemetry, and tested backup/restore procedures.
+5. Assign business, data, model, security, privacy, knowledge, and platform ownership with escalation SLAs.
+6. Roll out through offline evaluation, read-only sandbox, shadow mode, internal pilot, and controlled canary stages.
+
+A practical first deployment would be a compliance knowledge and case-note assistant connected to corporate identity, an approved document repository, and a controlled CRM write workflow.
+
+See [Enterprise Deployment Roadmap](docs/enterprise-deployment-roadmap.md) for the target operating model, pilot definition, integration requirements, rollout gates, and production-readiness criteria.
+
 ## Demo
 
 ![Regulated AI Agent Platform demo](docs/demo.gif)
@@ -254,6 +271,7 @@ kubectl -n regulated-ai get pods,svc,hpa
 - Architecture decisions: [docs/adr](docs/adr)
 - API examples: [docs/api-examples.md](docs/api-examples.md)
 - Operations checklist: [docs/operations-checklist.md](docs/operations-checklist.md)
+- Enterprise deployment roadmap: [docs/enterprise-deployment-roadmap.md](docs/enterprise-deployment-roadmap.md)
 - Threat model: [docs/threat-model.md](docs/threat-model.md)
 - Production limitations: [docs/production-limitations.md](docs/production-limitations.md)
 
