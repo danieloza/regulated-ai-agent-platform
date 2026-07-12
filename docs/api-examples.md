@@ -323,3 +323,26 @@ curl -s -X POST http://127.0.0.1:8000/api/control-lifecycles/transition \
 ```
 
 The API rejects skipped and repeated transitions with `409 Conflict` and records domain evidence plus a platform audit event for every accepted transition.
+
+## Enterprise API v1
+
+The `/api/v1` surface requires a credential, tenant context, and role. Store only SHA-256 credential digests in `ENTERPRISE_API_CREDENTIALS`; inject the JSON through a secret manager.
+
+```bash
+curl -s http://127.0.0.1:8000/api/v1/capabilities \
+  -H "Authorization: Bearer $ENTERPRISE_API_KEY" \
+  -H "X-Tenant-ID: demo"
+```
+
+Versioned lifecycle mutation with replay-safe idempotency:
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/api/v1/control-lifecycles/transitions \
+  -H "Authorization: Bearer $ENTERPRISE_API_KEY" \
+  -H "X-Tenant-ID: demo" \
+  -H "Idempotency-Key: model-evaluation-20260712-001" \
+  -H "Content-Type: application/json" \
+  -d '{"kind":"model","action":"evaluate_model","notes":"Candidate passed governed evaluation."}'
+```
+
+The same key and payload return the stored response with `idempotency_replayed: true`. Reusing the key with a different payload returns `409`. Audit endpoints support `limit`, `offset`, and optional `event_type`; outbox access requires `admin`.

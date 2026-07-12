@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import logging
 import math
@@ -13,7 +14,7 @@ from pathlib import Path
 from typing import Literal
 from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException, Request, UploadFile
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, Response
@@ -25,6 +26,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.services.infra import enforce_distributed_rate_limit, redis_status
 from app.services.evidence import render_evidence_markdown, render_evidence_pdf
 from app.services.governance_registry import REGISTRY_SHEETS, parse_registry_workbook
+from app.services.enterprise_api import EnterprisePrincipal, require_role
 from app.services.workflow import WORKFLOW_NODES, run_workflow_trace
 
 
@@ -216,6 +218,29 @@ class ControlLifecycle(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
 
 
+class EnterpriseIdempotencyRecord(Base):
+    __tablename__ = "enterprise_idempotency_records"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(String(120), index=True)
+    route: Mapped[str] = mapped_column(String(160))
+    request_hash: Mapped[str] = mapped_column(String(64))
+    response_json: Mapped[dict] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC), index=True)
+
+
+class EnterpriseOutboxEvent(Base):
+    __tablename__ = "enterprise_outbox_events"
+
+    id: Mapped[str] = mapped_column(String(48), primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(String(120), index=True)
+    event_type: Mapped[str] = mapped_column(String(120), index=True)
+    aggregate_id: Mapped[str] = mapped_column(String(120), index=True)
+    payload_json: Mapped[dict] = mapped_column(JSON)
+    status: Mapped[str] = mapped_column(String(40), default="pending", index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC), index=True)
+
+
 class QueryRequest(BaseModel):
     question: str = Field(min_length=3, max_length=1200)
     user_id: str = "operator.demo"
@@ -284,6 +309,17 @@ class ControlLifecycleTransitionRequest(BaseModel):
     kind: Literal["cost", "model", "approval", "knowledge"]
     action: str = Field(min_length=3, max_length=80)
     operator_id: str = "governance.operator"
+    notes: str = Field(default="", max_length=500)
+
+
+class EnterpriseControlTransitionRequest(BaseModel):
+    kind: Literal["cost", "model", "approval", "knowledge"]
+    action: str = Field(min_length=3, max_length=80)
+    notes: str = Field(default="", max_length=500)
+
+
+class EnterpriseDataSubjectTransitionRequest(BaseModel):
+    action: Literal["export_data", "correct_data", "restrict_processing", "delete_data", "generate_proof"]
     notes: str = Field(default="", max_length=500)
 
 
@@ -1313,6 +1349,171 @@ def transition_control_lifecycle(request: ControlLifecycleTransitionRequest) -> 
             {"lifecycle_id": item.id, "kind": item.kind, "action": request.action, "notes": redact_pii(request.notes)},
         )
         return serialize_control_lifecycle(item)
+
+
+def ensure_enterprise_resource_tenant(principal: EnterprisePrincipal) -> None:
+    resource_tenant = os.getenv("ENTERPRISE_RESOURCE_TENANT", "demo")
+    if principal.tenant_id != resource_tenant:
+        raise HTTPException(status_code=404, detail="No resources found for this tenant.")
+
+
+def idempotent_enterprise_mutation(
+    principal: EnterprisePrincipal,
+    route: str,
+    idempotency_key: str | None,
+    payload: dict,
+    operation,
+    aggregate_id: str,
+    event_type: str,
+) -> dict:
+    if not idempotency_key or not (8 <= len(idempotency_key) <= 120):
+        raise HTTPException(status_code=428, detail="Idempotency-Key with 8-120 characters is required.")
+    record_id = hashlib.sha256(f"{principal.tenant_id}:{route}:{idempotency_key}".encode()).hexdigest()
+    request_hash = hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
+    with SessionLocal() as session:
+        existing = session.get(EnterpriseIdempotencyRecord, record_id)
+        if existing:
+            if not hmac.compare_digest(existing.request_hash, request_hash):
+                raise HTTPException(status_code=409, detail="Idempotency-Key was already used with a different request payload.")
+            return {**existing.response_json, "enterprise_meta": {"idempotency_replayed": True, "tenant_id": principal.tenant_id}}
+
+    response = operation()
+    with SessionLocal() as session:
+        session.add(
+            EnterpriseIdempotencyRecord(
+                id=record_id,
+                tenant_id=principal.tenant_id,
+                route=route,
+                request_hash=request_hash,
+                response_json=response,
+            )
+        )
+        session.add(
+            EnterpriseOutboxEvent(
+                id=f"outbox_{uuid4().hex[:12]}",
+                tenant_id=principal.tenant_id,
+                event_type=event_type,
+                aggregate_id=aggregate_id,
+                payload_json={"actor": principal.subject, "role": principal.role, "result": response},
+            )
+        )
+        session.commit()
+    return {**response, "enterprise_meta": {"idempotency_replayed": False, "tenant_id": principal.tenant_id}}
+
+
+@app.get("/api/v1/health", tags=["Enterprise API"])
+def enterprise_health() -> dict:
+    return {"status": "ok", "api_version": "v1", "authentication": "api-key", "time": now_iso()}
+
+
+@app.get("/api/v1/capabilities", tags=["Enterprise API"])
+def enterprise_capabilities(principal: EnterprisePrincipal = Depends(require_role("viewer"))) -> dict:
+    ensure_enterprise_resource_tenant(principal)
+    return {
+        "api_version": "v1",
+        "tenant_id": principal.tenant_id,
+        "principal": {"subject": principal.subject, "role": principal.role, "key_fingerprint": principal.key_fingerprint},
+        "controls": ["rbac", "tenant-boundary", "idempotency", "pagination", "outbox", "audit-attribution"],
+        "resources": ["control-lifecycles", "data-subject-requests", "audit-events", "outbox-events"],
+    }
+
+
+@app.get("/api/v1/control-lifecycles", tags=["Enterprise Lifecycles"])
+def enterprise_control_lifecycles(
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    principal: EnterprisePrincipal = Depends(require_role("viewer")),
+) -> dict:
+    ensure_enterprise_resource_tenant(principal)
+    with SessionLocal() as session:
+        all_items = session.scalars(select(ControlLifecycle).order_by(ControlLifecycle.kind)).all()
+    items = [serialize_control_lifecycle(item) for item in all_items]
+    return {"data": items[offset : offset + limit], "pagination": {"limit": limit, "offset": offset, "total": len(items)}, "tenant_id": principal.tenant_id}
+
+
+@app.post("/api/v1/control-lifecycles/transitions", tags=["Enterprise Lifecycles"])
+def enterprise_control_transition(
+    request: EnterpriseControlTransitionRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    principal: EnterprisePrincipal = Depends(require_role("operator")),
+) -> dict:
+    ensure_enterprise_resource_tenant(principal)
+    body = request.model_dump()
+    return idempotent_enterprise_mutation(
+        principal,
+        "/api/v1/control-lifecycles/transitions",
+        idempotency_key,
+        body,
+        lambda: transition_control_lifecycle(ControlLifecycleTransitionRequest(**body, operator_id=principal.subject)),
+        CONTROL_LIFECYCLE_SPECS[request.kind]["id"],
+        f"enterprise.control.{request.kind}.transitioned",
+    )
+
+
+@app.get("/api/v1/data-subject-requests/{request_id}", tags=["Enterprise Privacy"])
+def enterprise_data_subject_request(
+    request_id: str,
+    principal: EnterprisePrincipal = Depends(require_role("approver")),
+) -> dict:
+    ensure_enterprise_resource_tenant(principal)
+    with SessionLocal() as session:
+        return {**data_subject_payload(session, request_id), "tenant_id": principal.tenant_id}
+
+
+@app.post("/api/v1/data-subject-requests/{request_id}/transitions", tags=["Enterprise Privacy"])
+def enterprise_data_subject_transition(
+    request_id: str,
+    request: EnterpriseDataSubjectTransitionRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    principal: EnterprisePrincipal = Depends(require_role("approver")),
+) -> dict:
+    ensure_enterprise_resource_tenant(principal)
+    body = request.model_dump()
+    return idempotent_enterprise_mutation(
+        principal,
+        f"/api/v1/data-subject-requests/{request_id}/transitions",
+        idempotency_key,
+        body,
+        lambda: transition_data_subject(DataSubjectTransitionRequest(**body, request_id=request_id, operator_id=principal.subject)),
+        request_id,
+        "enterprise.data-subject.transitioned",
+    )
+
+
+@app.get("/api/v1/audit-events", tags=["Enterprise Audit"])
+def enterprise_audit_events(
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    event_type: str | None = Query(default=None, max_length=120),
+    principal: EnterprisePrincipal = Depends(require_role("viewer")),
+) -> dict:
+    ensure_enterprise_resource_tenant(principal)
+    with SessionLocal() as session:
+        query = select(AuditEvent)
+        if event_type:
+            query = query.where(AuditEvent.event_type == event_type)
+        items = session.scalars(query.order_by(AuditEvent.created_at.desc())).all()
+    return {"data": serialize_events(items[offset : offset + limit]), "pagination": {"limit": limit, "offset": offset, "total": len(items)}, "tenant_id": principal.tenant_id}
+
+
+@app.get("/api/v1/outbox-events", tags=["Enterprise Integrations"])
+def enterprise_outbox_events(
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    principal: EnterprisePrincipal = Depends(require_role("admin")),
+) -> dict:
+    ensure_enterprise_resource_tenant(principal)
+    with SessionLocal() as session:
+        items = session.scalars(
+            select(EnterpriseOutboxEvent)
+            .where(EnterpriseOutboxEvent.tenant_id == principal.tenant_id)
+            .order_by(EnterpriseOutboxEvent.created_at.desc())
+        ).all()
+    data = [
+        {"id": item.id, "event_type": item.event_type, "aggregate_id": item.aggregate_id, "payload": item.payload_json, "status": item.status, "created_at": item.created_at.isoformat()}
+        for item in items[offset : offset + limit]
+    ]
+    return {"data": data, "pagination": {"limit": limit, "offset": offset, "total": len(items)}, "tenant_id": principal.tenant_id}
 
 
 def serialize_governance_record(record: GovernanceRecord) -> dict:

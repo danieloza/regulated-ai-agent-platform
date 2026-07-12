@@ -33,6 +33,7 @@ The goal is to demonstrate the engineering layer around AI agents: RAG, governan
 - Closed-loop Governance Lifecycle connecting agent onboarding, runtime risk detection, incident containment, policy replay, approval, rollout, and reactivation through guarded state transitions.
 - Data-subject request lifecycle with pseudonymous discovery, integrity-digested export, verified correction, enforced processing restriction, eligible-data anonymization, retention exceptions, and completion proof.
 - Shared Control Lifecycle Matrix for cost governance, model changes, human approvals, and governed knowledge, with 21 ordered transitions and domain-specific evidence.
+- Versioned enterprise API surface under `/api/v1` with SHA-256 API credentials, tenant boundaries, RBAC, idempotent mutations, pagination, actor attribution, and integration outbox events.
 - Human approval workflow with approve, deny, more-info, operator comments, and audit records.
 - Audit timeline with PII redaction and run-details drill-down.
 - Document upload/indexing UI for TXT-style governance notes.

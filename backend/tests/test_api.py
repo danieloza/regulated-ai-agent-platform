@@ -1,8 +1,10 @@
 from fastapi.testclient import TestClient
 from pathlib import Path
+import hashlib
+import json
 import pytest
 
-from app.main import Approval, AuditEvent, CONTROL_LIFECYCLE_SPECS, ControlLifecycle, Customer, DataSubjectRequest, GovernanceImport, GovernanceRecord, LifecycleIncident, LifecyclePolicyChange, ManagedAgent, SessionLocal, app
+from app.main import Approval, AuditEvent, CONTROL_LIFECYCLE_SPECS, ControlLifecycle, Customer, DataSubjectRequest, EnterpriseIdempotencyRecord, EnterpriseOutboxEvent, GovernanceImport, GovernanceRecord, LifecycleIncident, LifecyclePolicyChange, ManagedAgent, SessionLocal, app
 
 
 @pytest.fixture()
@@ -89,6 +91,8 @@ def reset_control_lifecycles():
             approval = session.get(Approval, "appr_lifecycle_demo")
             if approval:
                 approval.status = "pending"
+            session.query(EnterpriseIdempotencyRecord).delete()
+            session.query(EnterpriseOutboxEvent).delete()
             session.query(AuditEvent).filter(AuditEvent.event_type.like("control_%")).delete(synchronize_session=False)
             session.commit()
 
@@ -463,3 +467,75 @@ def test_control_lifecycle_matrix_completes_all_four_domains(client, reset_contr
     assert completed["approval"]["data"]["scope_match"] is True
     assert completed["knowledge"]["data"]["removed_from_index"] is True
     assert sum(len(item["evidence"]) for item in completed.values()) == 21
+
+
+def test_enterprise_v1_auth_rbac_tenant_idempotency_and_outbox(client, reset_control_lifecycles, monkeypatch):
+    credentials = []
+    for subject, key, role, tenants in [
+        ("audit.reader", "test-viewer-key", "viewer", ["demo"]),
+        ("platform.operator", "test-operator-key", "operator", ["demo"]),
+        ("privacy.approver", "test-approver-key", "approver", ["demo"]),
+        ("integration.admin", "test-admin-key", "admin", ["demo"]),
+        ("other.operator", "test-other-key", "operator", ["other"]),
+    ]:
+        credentials.append({"subject": subject, "sha256": hashlib.sha256(key.encode()).hexdigest(), "role": role, "tenants": tenants})
+    monkeypatch.setenv("ENTERPRISE_API_CREDENTIALS", json.dumps(credentials))
+    monkeypatch.setenv("ENTERPRISE_RESOURCE_TENANT", "demo")
+
+    health = client.get("/api/v1/health")
+    assert health.status_code == 200
+    assert health.json()["api_version"] == "v1"
+    assert client.get("/api/v1/capabilities", headers={"X-Tenant-ID": "demo"}).status_code == 401
+
+    viewer_headers = {"Authorization": "Bearer test-viewer-key", "X-Tenant-ID": "demo"}
+    listing = client.get("/api/v1/control-lifecycles?limit=2&offset=1", headers=viewer_headers)
+    assert listing.status_code == 200
+    assert len(listing.json()["data"]) == 2
+    assert listing.json()["pagination"]["total"] == 4
+
+    denied = client.post(
+        "/api/v1/control-lifecycles/transitions",
+        headers={**viewer_headers, "Idempotency-Key": "viewer-attempt-001"},
+        json={"kind": "cost", "action": "allocate_budget"},
+    )
+    assert denied.status_code == 403
+
+    other_tenant = client.get(
+        "/api/v1/control-lifecycles",
+        headers={"X-API-Key": "test-other-key", "X-Tenant-ID": "other"},
+    )
+    assert other_tenant.status_code == 404
+
+    operator_headers = {"X-API-Key": "test-operator-key", "X-Tenant-ID": "demo"}
+    missing_idempotency = client.post(
+        "/api/v1/control-lifecycles/transitions",
+        headers=operator_headers,
+        json={"kind": "cost", "action": "allocate_budget"},
+    )
+    assert missing_idempotency.status_code == 428
+
+    payload = {"kind": "cost", "action": "allocate_budget", "notes": "Approved allocation."}
+    mutation_headers = {**operator_headers, "Idempotency-Key": "cost-allocation-001"}
+    created = client.post("/api/v1/control-lifecycles/transitions", headers=mutation_headers, json=payload)
+    assert created.status_code == 200
+    assert created.json()["enterprise_meta"]["idempotency_replayed"] is False
+    assert created.json()["data"]["allocated_usd"] == 4000
+
+    replayed = client.post("/api/v1/control-lifecycles/transitions", headers=mutation_headers, json=payload)
+    assert replayed.status_code == 200
+    assert replayed.json()["enterprise_meta"]["idempotency_replayed"] is True
+
+    conflict = client.post(
+        "/api/v1/control-lifecycles/transitions",
+        headers=mutation_headers,
+        json={"kind": "cost", "action": "track_spend", "notes": "Different payload."},
+    )
+    assert conflict.status_code == 409
+
+    outbox = client.get(
+        "/api/v1/outbox-events",
+        headers={"Authorization": "Bearer test-admin-key", "X-Tenant-ID": "demo"},
+    )
+    assert outbox.status_code == 200
+    assert outbox.json()["pagination"]["total"] >= 1
+    assert outbox.json()["data"][0]["event_type"] == "enterprise.control.cost.transitioned"

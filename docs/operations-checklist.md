@@ -47,6 +47,17 @@ Use this checklist when moving from a local evaluation to a shared or deployed e
 - [ ] Rotate credentials and confirm the application reconnects without unsafe manual changes.
 - [ ] Review `GET /api/infra` exposure because it can reveal runtime configuration metadata.
 
+## Enterprise API
+
+- [ ] Generate high-entropy API keys outside the repository and store only their SHA-256 digests in `ENTERPRISE_API_CREDENTIALS`.
+- [ ] Inject credential configuration from a secret manager; replace the empty Compose/Kubernetes placeholder before enabling `/api/v1`.
+- [ ] Assign the minimum role (`viewer`, `operator`, `approver`, or `admin`) and an explicit tenant allowlist to every service account.
+- [ ] Rotate keys, remove revoked digests, and verify old credentials return `401`.
+- [ ] Require unique `Idempotency-Key` values for every mutation and monitor `409` conflicts for client misuse.
+- [ ] Drain pending outbox events into the approved SIEM, webhook relay, or event bus with retry and dead-letter handling.
+- [ ] Apply gateway-level TLS, request-size limits, rate limits, IP policy, and credential abuse alerts before external exposure.
+- [ ] Confirm audit and lifecycle pagination limits protect the database from unbounded reads.
+
 ## CORS
 
 - [ ] Replace localhost defaults with the exact deployed frontend origins.
