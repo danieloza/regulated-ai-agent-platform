@@ -4,8 +4,9 @@ import hashlib
 import json
 
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
-from app.main import Chunk, Document, EnterpriseIdempotencyRecord, EnterpriseOutboxEvent, KnowledgeChange, KnowledgeClaim, KnowledgeRelease, KnowledgeSource, SecureContext, SessionLocal, app
+from app.main import AuditEvent, Chunk, Document, EnterpriseIdempotencyRecord, EnterpriseOutboxEvent, KnowledgeChange, KnowledgeClaim, KnowledgeConnector, KnowledgeConnectorFile, KnowledgeRelease, KnowledgeSource, KnowledgeSyncPreview, SecureContext, SessionLocal, app
 from app.services.knowledge import compile_claims, find_contradictions
 
 
@@ -254,6 +255,140 @@ def test_knowledge_replay_and_approval_publish_versioned_source_to_rag():
         session.commit()
 
 
+def test_obsidian_connector_persists_preview_blocks_drift_and_tombstones_deleted_notes(tmp_path, monkeypatch):
+    vault = tmp_path / "governance-vault"
+    policies = vault / "Policies"
+    controls = vault / "Controls"
+    hidden = vault / ".obsidian"
+    policies.mkdir(parents=True)
+    controls.mkdir(parents=True)
+    hidden.mkdir(parents=True)
+    governance_note = policies / "Governance.md"
+    retention_note = controls / "Retention.md"
+    governance_note.write_text(
+        """---
+title: Connected Governance Policy
+owner: Connector Test Owner
+classification: internal
+status: approved
+source_type: policy
+tags: [governed-ai, policy]
+---
+# Connected Governance Policy
+
+AI assistants must cite approved sources before providing regulated guidance.
+
+Related control: [[Retention]].
+""",
+        encoding="utf-8",
+    )
+    retention_note.write_text(
+        """---
+title: Connected Retention Amendment
+owner: Legal Connector Test
+classification: confidential
+status: approved
+source_type: standard
+tags: [governed-ai, retention]
+---
+# Connected Retention Amendment
+
+Customer case records must be retained for seven years after account closure.
+""",
+        encoding="utf-8",
+    )
+    (hidden / "private.md").write_text("api_key=must-never-be-scanned-123456", encoding="utf-8")
+    monkeypatch.setenv("APP_ENV", "development")
+    monkeypatch.setenv("OBSIDIAN_ALLOWED_ROOTS", str(tmp_path))
+    connector_id = None
+    preview_ids = []
+    source_ids = []
+    change_ids = []
+
+    request = {
+        "name": "Connector Test Vault",
+        "vault_name": "governance-vault",
+        "vault_path": str(vault),
+        "include_folders": ["Policies", "Controls"],
+        "required_tags": ["governed-ai"],
+        "default_owner": "Knowledge Connector Test",
+        "classification": "internal",
+        "review_days": 90,
+        "operator_id": "connector.operator",
+    }
+    with TestClient(app) as client:
+        denied = client.post("/api/knowledge/connectors/obsidian/previews", json={**request, "vault_path": str(tmp_path.parent)})
+        assert denied.status_code == 422
+
+        staged = client.post("/api/knowledge/connectors/obsidian/previews", json=request)
+        assert staged.status_code == 200
+        staged_payload = staged.json()
+        connector_id = staged_payload["connector"]["id"]
+        preview_ids.append(staged_payload["preview"]["id"])
+        assert staged_payload["preview"]["summary"]["new"] == 2
+        assert all("content" not in item for item in staged_payload["preview"]["changes"])
+        assert all(item["obsidian_uri"].startswith("obsidian://open?") for item in staged_payload["preview"]["changes"])
+
+        governance_note.write_text(
+            governance_note.read_text(encoding="utf-8").replace("classification: internal", "classification: confidential"),
+            encoding="utf-8",
+        )
+        drifted = client.post(
+            f"/api/knowledge/connectors/obsidian/previews/{preview_ids[-1]}/apply",
+            json={"operator_id": "connector.approver", "comment": "Reviewed connector scope and staged source diff."},
+        )
+        assert drifted.status_code == 409
+
+        refreshed = client.post("/api/knowledge/connectors/obsidian/previews", json={**request, "connector_id": connector_id})
+        assert refreshed.status_code == 200
+        preview_ids.append(refreshed.json()["preview"]["id"])
+        applied = client.post(
+            f"/api/knowledge/connectors/obsidian/previews/{preview_ids[-1]}/apply",
+            json={"operator_id": "connector.approver", "comment": "Reviewed connector scope and staged source diff."},
+        )
+        assert applied.status_code == 200
+        assert applied.json()["publication"] == "human_review_required"
+        source_ids = [item["source_id"] for item in applied.json()["results"] if item.get("source_id")]
+        change_ids = [item["change_id"] for item in applied.json()["results"] if item.get("change_id")]
+
+        graph = client.get("/api/knowledge/graph")
+        assert graph.status_code == 200
+        assert {"connector", "note", "source", "change"}.issubset(set(graph.json()["metrics"]["types"]))
+        assert any(edge["relation"] == "wikilink" for edge in graph.json()["edges"])
+
+        retention_note.unlink()
+        deletion_preview = client.post("/api/knowledge/connectors/obsidian/previews", json={**request, "connector_id": connector_id})
+        assert deletion_preview.status_code == 200
+        preview_ids.append(deletion_preview.json()["preview"]["id"])
+        assert deletion_preview.json()["preview"]["summary"]["deleted"] == 1
+        deletion_apply = client.post(
+            f"/api/knowledge/connectors/obsidian/previews/{preview_ids[-1]}/apply",
+            json={"operator_id": "connector.approver", "comment": "Confirmed deletion requires a separate retention decision."},
+        )
+        assert deletion_apply.status_code == 200
+        assert any(item["action"] == "retention_review_required" for item in deletion_apply.json()["results"])
+
+    with SessionLocal() as session:
+        assert all(session.get(KnowledgeSource, source_id) for source_id in source_ids)
+        tombstone = session.scalar(
+            select(KnowledgeConnectorFile).where(
+                KnowledgeConnectorFile.connector_id == connector_id,
+                KnowledgeConnectorFile.relative_path == "Controls/Retention.md",
+            )
+        )
+        assert tombstone.status == "tombstoned"
+        session.query(AuditEvent).filter(AuditEvent.run_id.in_(preview_ids + change_ids)).delete(synchronize_session=False)
+        session.query(KnowledgeSyncPreview).filter(KnowledgeSyncPreview.id.in_(preview_ids)).delete(synchronize_session=False)
+        session.query(KnowledgeConnectorFile).filter(KnowledgeConnectorFile.connector_id == connector_id).delete(synchronize_session=False)
+        for change_id in change_ids:
+            session.query(KnowledgeChange).filter(KnowledgeChange.id == change_id).delete()
+        for source_id in source_ids:
+            session.query(KnowledgeClaim).filter(KnowledgeClaim.source_id == source_id).delete()
+            session.query(KnowledgeSource).filter(KnowledgeSource.id == source_id).delete()
+        session.query(KnowledgeConnector).filter(KnowledgeConnector.id == connector_id).delete()
+        session.commit()
+
+
 def test_enterprise_knowledge_api_enforces_rbac_pagination_and_idempotency(monkeypatch):
     credentials = [
         {"subject": "knowledge.reader", "sha256": hashlib.sha256(b"knowledge-viewer-key").hexdigest(), "role": "viewer", "tenants": ["demo"]},
@@ -273,6 +408,11 @@ def test_enterprise_knowledge_api_enforces_rbac_pagination_and_idempotency(monke
         assert overview.status_code == 200
         assert overview.json()["tenant_id"] == "demo"
         assert "claims" not in overview.json()
+
+        graph = client.get("/api/v1/knowledge/graph", headers=viewer)
+        assert graph.status_code == 200
+        assert graph.json()["tenant_id"] == "demo"
+        assert graph.json()["semantics"]["inferred"] == ["lexical_run_overlap"]
 
         claims = client.get("/api/v1/knowledge/claims?limit=1", headers=viewer)
         assert claims.status_code == 200

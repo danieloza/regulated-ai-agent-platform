@@ -25,6 +25,7 @@ The goal is to demonstrate the engineering layer around AI agents: RAG, governan
 - Secure RAG assistant with source-bound answers and citations.
 - Governed LLM Wiki with immutable sources, compiled claims, contradiction detection, knowledge diffs, historical impact replay, approval-gated publication, and versioned releases.
 - Knowledge Control Center with explainable health controls, operator review queue, claim provenance, source freshness, release lineage, and premium responsive UX.
+- Controlled Obsidian Vault Connector with allowlisted Markdown scanning, persisted Preview Diff, drift-safe apply, `Open in Obsidian` deep links, and a knowledge governance graph.
 - Secure Context Vault with encrypted supplemental context, short-lived step-up access, scope and TTL controls, single-run consumption, secret/injection scans, and metadata-only audit evidence.
 - Prompt-injection lab with runnable attack scenarios and expected policy outcomes.
 - Agent tool gateway where the agent has no shell, secrets, or direct database credentials.
@@ -132,12 +133,13 @@ Use this flow when presenting the project in an interview:
 2. Continue through containment, mitigation, policy draft, security replay, approval, and rollout. Show the evidence timeline and safe agent reactivation.
 3. Open `Data Subject Requests`. Show pseudonymous discovery, integrity-digested export, tool-level processing restriction, anonymization, and completion proof.
 4. Open `Control Lifecycle Matrix`. Compare cost, model change, human approval, and knowledge governance as separate guarded loops using one lifecycle engine.
-5. Open `Knowledge Control Center`. Review the five-to-seven-year retention contradiction, run historical impact replay, and inspect the approval-gated knowledge diff.
-6. Unlock `Secure Context Vault`, attach confidential context to one run, and show that the audit records only its metadata and integrity digest.
-7. Go to `Prompt Injection Lab`, run an instruction-override attack, and inspect the denied run with risk factors and audit evidence.
-8. Use `Tool Gateway` to compare an allowed read with a regulated write that becomes `approval_required`.
-9. Show `/api/v1` authentication, tenant context, RBAC, idempotency replay, and the generated integration outbox event.
-10. Go to `Ledger Demo` and compare unsafe read-modify-write with the atomic SQL update:
+5. Open `Knowledge Control Center`. Scan the bundled Obsidian vault, inspect the persisted Preview Diff, and apply it to the human review queue.
+6. Open `Governance graph` to trace note-to-source-to-claim lineage, then review the five-to-seven-year retention contradiction and historical impact replay.
+7. Unlock `Secure Context Vault`, attach confidential context to one run, and show that the audit records only its metadata and integrity digest.
+8. Go to `Prompt Injection Lab`, run an instruction-override attack, and inspect the denied run with risk factors and audit evidence.
+9. Use `Tool Gateway` to compare an allowed read with a regulated write that becomes `approval_required`.
+10. Show `/api/v1` authentication, tenant context, RBAC, idempotency replay, and the generated integration outbox event.
+11. Go to `Ledger Demo` and compare unsafe read-modify-write with the atomic SQL update:
 
 ```sql
 UPDATE accounts
@@ -230,6 +232,7 @@ flowchart LR
   Gateway --> API
   API --> Lifecycles["Governance Lifecycle Engine"]
   API --> Knowledge["Governed Knowledge Compiler"]
+  Obsidian["Allowlisted Obsidian Markdown Vault"] --> Knowledge
   API --> Context["Secure Context Vault"]
   API --> Policy["Policy Engine"]
   API --> RAG["Secure RAG Pipeline"]

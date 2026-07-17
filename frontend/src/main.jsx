@@ -41,6 +41,7 @@ import {
   Workflow,
   X,
 } from "lucide-react";
+import { KnowledgeGraphView, ObsidianConnectorView } from "./components/KnowledgeIntegrations";
 import "./styles.css";
 
 const API = import.meta.env.VITE_API_URL ?? "";
@@ -74,7 +75,7 @@ const presentationStories = {
   client: {
     label: "Client / Governance",
     shortLabel: "Client story",
-    duration: "6–8 min",
+    duration: "7–9 min",
     description: "An outcome-led walkthrough for decision makers, risk owners and prospective clients.",
     steps: [
       {
@@ -120,16 +121,25 @@ const presentationStories = {
       {
         target: "#knowledge-control-center .knowledge-hero",
         section: "knowledge-control-center",
-        knowledgeTab: "overview",
+        knowledgeTab: "connectors",
         eyebrow: "06 · Govern the evidence",
-        title: "Open the knowledge supply chain",
-        body: "Sources become reviewable claims, contradictions are surfaced and approved changes are published as integrity-digested releases.",
-        cue: "Use the five-versus-seven-year retention conflict to show why enterprise RAG needs review and versioning.",
+        title: "Stage knowledge from Obsidian",
+        body: "An allowlisted vault becomes a persisted Preview Diff before any source can enter the governed review workflow.",
+        cue: "Run the bundled vault scan. Point out drift detection, Open in Obsidian, and that apply creates review changes rather than publishing to RAG.",
+      },
+      {
+        target: "#knowledge-control-center .knowledge-hero",
+        section: "knowledge-control-center",
+        knowledgeTab: "graph",
+        eyebrow: "07 · Trace provenance",
+        title: "Follow the governance graph",
+        body: "Operators can trace notes into immutable sources, candidate claims and releases while inferred run overlap remains visibly separate.",
+        cue: "Use the graph and accessible relationship list to distinguish persisted lineage from analytical signals.",
       },
       {
         target: "#control-lifecycle-matrix .control-matrix-heading",
         section: "control-lifecycle-matrix",
-        eyebrow: "07 · Connect operations",
+        eyebrow: "08 · Connect operations",
         title: "Show governed operating lifecycles",
         body: "Cost, model, approval and knowledge changes follow guarded transitions with owners, evidence and a defined next action.",
         cue: "Explain that governance is a repeatable operating process, not a collection of disconnected dashboard cards.",
@@ -137,7 +147,7 @@ const presentationStories = {
       {
         target: "#audit-trail",
         section: "audit-trail",
-        eyebrow: "08 · Close with proof",
+        eyebrow: "09 · Close with proof",
         title: "Finish on audit evidence",
         body: "Every important run preserves the decision, risk factors, citations, tool activity, approvals and timestamps needed for review.",
         cue: "Close with: The platform can explain what happened, why it happened and who was accountable.",
@@ -147,7 +157,7 @@ const presentationStories = {
   hr: {
     label: "HR / Portfolio",
     shortLabel: "Portfolio story",
-    duration: "5–7 min",
+    duration: "6–8 min",
     description: "A technical narrative focused on architecture, security judgment and production-shaped engineering.",
     steps: [
       {
@@ -193,16 +203,25 @@ const presentationStories = {
       {
         target: "#knowledge-control-center .knowledge-hero",
         section: "knowledge-control-center",
-        knowledgeTab: "overview",
+        knowledgeTab: "connectors",
         eyebrow: "06 · Enterprise differentiator",
-        title: "Present the governed LLM Wiki",
-        body: "The knowledge layer adds provenance, claim compilation, contradiction detection, replay, approval and versioned publication to RAG.",
-        cue: "Describe it as a governed knowledge supply chain, then mention the encrypted Secure Context Vault and fail-closed production configuration.",
+        title: "Present controlled knowledge intake",
+        body: "Obsidian remains the authoring plane while the platform owns allowlisting, snapshot integrity, review and versioned publication.",
+        cue: "Explain the trust boundary: Markdown is untrusted, preview is persisted, apply is drift-safe, and publication still requires a human.",
+      },
+      {
+        target: "#knowledge-control-center .knowledge-hero",
+        section: "knowledge-control-center",
+        knowledgeTab: "graph",
+        eyebrow: "07 · Lineage model",
+        title: "Inspect the governance graph",
+        body: "The graph joins connectors, notes, sources, changes, claims, releases and historical runs without overstating inferred relationships.",
+        cue: "Discuss the data model and why authoritative provenance is separated from lexical run overlap.",
       },
       {
         target: "#policy-replay .panel-heading",
         section: "policy-replay",
-        eyebrow: "07 · Regression discipline",
+        eyebrow: "08 · Regression discipline",
         title: "Demonstrate policy replay",
         body: "Historical and adversarial runs become a regression corpus for evaluating candidate policy behavior before release.",
         cue: "This is the interview headline: governance changes are tested like software changes instead of being deployed on intuition.",
@@ -210,7 +229,7 @@ const presentationStories = {
       {
         target: "#audit-trail",
         section: "audit-trail",
-        eyebrow: "08 · Engineering close",
+        eyebrow: "09 · Engineering close",
         title: "End with evidence and boundaries",
         body: "The audit timeline and evidence export make the system inspectable, while the documentation states what production integration still requires.",
         cue: "Close honestly: production-shaped architecture, verified workflows and clear boundaries—not an unsupported production-ready claim.",
@@ -275,6 +294,21 @@ function App() {
   const [selectedKnowledgeChangeId, setSelectedKnowledgeChangeId] = useState("kchg_retention_2026");
   const [knowledgeBusy, setKnowledgeBusy] = useState("");
   const [knowledgeReplay, setKnowledgeReplay] = useState(null);
+  const [obsidianConnectorState, setObsidianConnectorState] = useState(null);
+  const [obsidianPreview, setObsidianPreview] = useState(null);
+  const [knowledgeGraph, setKnowledgeGraph] = useState(null);
+  const [obsidianApplyComment, setObsidianApplyComment] = useState("Reviewed vault scope, source provenance, and the persisted diff before creating review changes.");
+  const [obsidianDraft, setObsidianDraft] = useState({
+    connector_id: "",
+    name: "Obsidian Governance Vault",
+    vault_name: "Regulated AI Governance",
+    vault_path: "demo/obsidian-vault",
+    include_folders: "Policies, Controls",
+    required_tags: "governed-ai",
+    default_owner: "Knowledge Governance",
+    classification: "internal",
+    review_days: 365,
+  });
   const [knowledgeDecisionComment, setKnowledgeDecisionComment] = useState("Reviewed source provenance, contradiction impact, and historical replay evidence.");
   const [sourceDraft, setSourceDraft] = useState({
     title: "Customer Communication Standard 2026",
@@ -455,20 +489,100 @@ function App() {
 
   async function loadKnowledge() {
     try {
-      const [overviewResponse, contextResponse] = await Promise.all([
+      const [overviewResponse, contextResponse, connectorResponse, graphResponse] = await Promise.all([
         fetch(`${API}/api/knowledge/overview`),
         fetch(`${API}/api/knowledge/secure-context`),
+        fetch(`${API}/api/knowledge/connectors/obsidian`),
+        fetch(`${API}/api/knowledge/graph`),
       ]);
       if (!overviewResponse.ok) throw new Error(`Knowledge overview failed: ${overviewResponse.status}`);
       if (!contextResponse.ok) throw new Error(`Secure context status failed: ${contextResponse.status}`);
+      if (!connectorResponse.ok) throw new Error(`Obsidian connector status failed: ${connectorResponse.status}`);
+      if (!graphResponse.ok) throw new Error(`Knowledge graph failed: ${graphResponse.status}`);
       const overview = await overviewResponse.json();
+      const connectorState = await connectorResponse.json();
       setKnowledge(overview);
       setSecureContextStatus(await contextResponse.json());
+      setObsidianConnectorState(connectorState);
+      setKnowledgeGraph(await graphResponse.json());
+      if (connectorState.previews?.length) setObsidianPreview(connectorState.previews[0]);
+      const latestConnector = connectorState.connectors?.[0];
+      setObsidianDraft((current) => current.connector_id || !latestConnector ? current : {
+        ...current,
+        connector_id: latestConnector.id,
+        name: latestConnector.name,
+        vault_name: latestConnector.vault_name,
+        include_folders: latestConnector.include_folders.join(", "),
+        required_tags: latestConnector.required_tags.join(", "),
+        default_owner: latestConnector.default_owner,
+        classification: latestConnector.classification,
+        review_days: latestConnector.review_days,
+      });
       if (!overview.changes?.some((item) => item.id === selectedKnowledgeChangeId && ["pending_review", "changes_requested"].includes(item.status))) {
         setSelectedKnowledgeChangeId(overview.changes?.find((item) => ["pending_review", "changes_requested"].includes(item.status))?.id ?? overview.changes?.[0]?.id ?? "");
       }
     } catch (error) {
       setErrorMessage(error.message);
+    }
+  }
+
+  async function previewObsidianVault(payload) {
+    setKnowledgeBusy("obsidian-preview");
+    setErrorMessage("");
+    try {
+      const response = await fetch(`${API}/api/knowledge/connectors/obsidian/previews`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...payload, connector_id: payload.connector_id || null, operator_id: "knowledge.operator" }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result?.error?.message ?? result?.detail ?? `Obsidian preview failed: ${response.status}`);
+      setObsidianPreview(result.preview);
+      setObsidianDraft((current) => ({ ...current, connector_id: result.connector.id }));
+      setStatusMessage(`Persisted vault preview created: ${result.preview.summary.new} new, ${result.preview.summary.modified} modified, ${result.preview.summary.deleted} deleted.`);
+      await loadKnowledge();
+    } catch (error) {
+      setErrorMessage(error.message);
+    } finally {
+      setKnowledgeBusy("");
+    }
+  }
+
+  async function applyObsidianPreview() {
+    if (!obsidianPreview) return;
+    setKnowledgeBusy("obsidian-apply");
+    setErrorMessage("");
+    try {
+      const response = await fetch(`${API}/api/knowledge/connectors/obsidian/previews/${obsidianPreview.id}/apply`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ operator_id: "knowledge.approver", comment: obsidianApplyComment }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result?.error?.message ?? result?.detail ?? `Obsidian apply failed: ${response.status}`);
+      setObsidianPreview(result.preview);
+      if (result.results?.[0]?.change_id) setSelectedKnowledgeChangeId(result.results[0].change_id);
+      setStatusMessage(`${result.results?.length ?? 0} vault changes moved into the governed review queue; publication remains approval-gated.`);
+      await loadKnowledge();
+    } catch (error) {
+      setErrorMessage(error.message);
+    } finally {
+      setKnowledgeBusy("");
+    }
+  }
+
+  async function refreshKnowledgeGraph() {
+    setKnowledgeBusy("graph-refresh");
+    setErrorMessage("");
+    try {
+      const response = await fetch(`${API}/api/knowledge/graph`);
+      if (!response.ok) throw new Error(`Knowledge graph failed: ${response.status}`);
+      setKnowledgeGraph(await response.json());
+      setStatusMessage("Knowledge governance graph refreshed.");
+    } catch (error) {
+      setErrorMessage(error.message);
+    } finally {
+      setKnowledgeBusy("");
     }
   }
 
@@ -1322,6 +1436,8 @@ function App() {
             <div className="knowledge-tabs" role="tablist" aria-label="Knowledge Control Center views">
               {[
                 ["overview", "Overview"],
+                ["connectors", "Connectors"],
+                ["graph", "Governance graph"],
                 ["changes", "Change reviews"],
                 ["sources", "Sources"],
                 ["claims", "Claims"],
@@ -1332,7 +1448,7 @@ function App() {
               ))}
             </div>
 
-            <div className="knowledge-workspace">
+            <div className={`knowledge-workspace ${["connectors", "graph"].includes(knowledgeTab) ? "wide-view" : ""}`}>
               <div className="knowledge-main">
                 {knowledgeTab === "overview" && (
                   <div className="knowledge-overview-view">
@@ -1374,6 +1490,24 @@ function App() {
                       </div>
                     </article>
                   </div>
+                )}
+
+                {knowledgeTab === "connectors" && (
+                  <ObsidianConnectorView
+                    connectorState={obsidianConnectorState}
+                    draft={obsidianDraft}
+                    setDraft={setObsidianDraft}
+                    preview={obsidianPreview}
+                    busy={knowledgeBusy}
+                    applyComment={obsidianApplyComment}
+                    setApplyComment={setObsidianApplyComment}
+                    onPreview={previewObsidianVault}
+                    onApply={applyObsidianPreview}
+                  />
+                )}
+
+                {knowledgeTab === "graph" && (
+                  <KnowledgeGraphView graph={knowledgeGraph} busy={knowledgeBusy} onRefresh={refreshKnowledgeGraph} />
                 )}
 
                 {knowledgeTab === "changes" && (
@@ -1446,7 +1580,7 @@ function App() {
                 )}
               </div>
 
-              <aside className={`secure-context-vault ${secureContextToken ? "unlocked" : "locked"}`}>
+              {!(["connectors", "graph"].includes(knowledgeTab)) && <aside className={`secure-context-vault ${secureContextToken ? "unlocked" : "locked"}`}>
                 <div className="vault-heading"><span>{secureContextToken ? <ShieldCheck size={18} /> : <LockKeyhole size={18} />}</span><div><small>Protected operational data</small><h3>Secure Context Vault</h3></div><code>{secureContextToken ? "unlocked" : "locked"}</code></div>
                 {!secureContextToken ? (
                   <>
@@ -1470,7 +1604,7 @@ function App() {
                     <button className="vault-save" type="button" disabled={knowledgeBusy === "secure-context"} onClick={saveSecureContext}><LockKeyhole size={15} />{knowledgeBusy === "secure-context" ? "Encrypting context..." : "Save encrypted context"}</button>
                   </div>
                 )}
-              </aside>
+              </aside>}
             </div>
           </section>
 
