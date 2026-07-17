@@ -1,13 +1,17 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   Activity,
   AlertTriangle,
+  ArrowLeft,
+  ArrowRight,
   Beaker,
   BookOpenCheck,
+  BriefcaseBusiness,
   CheckCircle2,
   ChevronRight,
   Clock3,
+  Code2,
   Database,
   Download,
   Eye,
@@ -26,6 +30,7 @@ import {
   OctagonX,
   Play,
   Plus,
+  Presentation,
   RefreshCw,
   Search,
   ShieldCheck,
@@ -64,6 +69,155 @@ const sections = [
   ["Human Approval", "human-approval", UserCheck],
   ["Ledger Demo", "ledger-demo", Database],
 ];
+
+const presentationStories = {
+  client: {
+    label: "Client / Governance",
+    shortLabel: "Client story",
+    duration: "6–8 min",
+    description: "An outcome-led walkthrough for decision makers, risk owners and prospective clients.",
+    steps: [
+      {
+        target: "#operator-console",
+        section: "operator-console",
+        eyebrow: "01 · Position the platform",
+        title: "Start with the control plane",
+        body: "Frame the platform as the governed layer between users, AI models, enterprise knowledge and operational systems.",
+        cue: "Say: The goal is not only to produce an answer. It is to keep every decision attributable, reviewable and bounded by policy.",
+      },
+      {
+        target: "#safe-rag",
+        section: "safe-rag",
+        eyebrow: "02 · Show one real run",
+        title: "Demonstrate a source-bound answer",
+        body: "The assistant answers from approved evidence, records the governing policy version and preserves the run for later review.",
+        cue: "Run the first approved-source sample. Point out the decision, citations and the fact that unsupported answers fail safely.",
+      },
+      {
+        target: "#policy-engine",
+        section: "policy-engine",
+        eyebrow: "03 · Explain the boundary",
+        title: "Make policy decisions visible",
+        body: "Allowed, denied and approval-required are explicit platform decisions rather than hidden prompt behavior.",
+        cue: "Connect each decision to an accountable control: read, block or pause for an authorized reviewer.",
+      },
+      {
+        target: "#human-approval",
+        section: "human-approval",
+        eyebrow: "04 · Add accountability",
+        title: "Pause regulated writes for approval",
+        body: "High-impact actions remain pending until an operator approves, denies or requests more information with an auditable comment.",
+        cue: "Create a case-note approval only if you want a live interaction; otherwise explain the three-way decision workflow.",
+      },
+      {
+        target: "#policy-replay .panel-heading",
+        section: "policy-replay",
+        eyebrow: "05 · Govern change",
+        title: "Replay policy before rollout",
+        body: "Candidate policies are tested against historical runs and adversarial evaluations before they can change production behavior.",
+        cue: "Emphasize regression risk: which safe requests would be blocked, and which unsafe requests might become allowed?",
+      },
+      {
+        target: "#knowledge-control-center .knowledge-hero",
+        section: "knowledge-control-center",
+        knowledgeTab: "overview",
+        eyebrow: "06 · Govern the evidence",
+        title: "Open the knowledge supply chain",
+        body: "Sources become reviewable claims, contradictions are surfaced and approved changes are published as integrity-digested releases.",
+        cue: "Use the five-versus-seven-year retention conflict to show why enterprise RAG needs review and versioning.",
+      },
+      {
+        target: "#control-lifecycle-matrix .control-matrix-heading",
+        section: "control-lifecycle-matrix",
+        eyebrow: "07 · Connect operations",
+        title: "Show governed operating lifecycles",
+        body: "Cost, model, approval and knowledge changes follow guarded transitions with owners, evidence and a defined next action.",
+        cue: "Explain that governance is a repeatable operating process, not a collection of disconnected dashboard cards.",
+      },
+      {
+        target: "#audit-trail",
+        section: "audit-trail",
+        eyebrow: "08 · Close with proof",
+        title: "Finish on audit evidence",
+        body: "Every important run preserves the decision, risk factors, citations, tool activity, approvals and timestamps needed for review.",
+        cue: "Close with: The platform can explain what happened, why it happened and who was accountable.",
+      },
+    ],
+  },
+  hr: {
+    label: "HR / Portfolio",
+    shortLabel: "Portfolio story",
+    duration: "5–7 min",
+    description: "A technical narrative focused on architecture, security judgment and production-shaped engineering.",
+    steps: [
+      {
+        target: "#operator-console",
+        section: "operator-console",
+        eyebrow: "01 · Set the architecture",
+        title: "Present one integrated platform",
+        body: "FastAPI, React, policy controls, audit evidence and operational workflows are presented as one coherent governance system.",
+        cue: "Lead with the engineering problem: safely connecting an AI assistant to regulated data and business actions.",
+      },
+      {
+        target: "#safe-rag",
+        section: "safe-rag",
+        eyebrow: "02 · Retrieval boundary",
+        title: "Explain source-bound RAG",
+        body: "Retrieved documents are treated as untrusted data, citations are mandatory and the assistant can return a safe unknown.",
+        cue: "Highlight the distinction between retrieval quality and authorization: a retrieved instruction never becomes system authority.",
+      },
+      {
+        target: "#prompt-lab",
+        section: "prompt-lab",
+        eyebrow: "03 · Security engineering",
+        title: "Run the adversarial path",
+        body: "The prompt-injection lab makes abuse cases reproducible and connects runtime safeguards to regression testing.",
+        cue: "Run the secret-exfiltration sample and point out that the agent has no shell, secrets or direct database credentials.",
+      },
+      {
+        target: "#tool-gateway",
+        section: "tool-gateway",
+        eyebrow: "04 · Capability design",
+        title: "Show the scoped tool gateway",
+        body: "The model receives narrow backend capabilities instead of infrastructure credentials, with policy evaluated before every action.",
+        cue: "Contrast a read-only customer summary with a regulated case-note write that requires approval.",
+      },
+      {
+        target: "#control-lifecycle-matrix .control-matrix-heading",
+        section: "control-lifecycle-matrix",
+        eyebrow: "05 · Platform thinking",
+        title: "Connect controls into state machines",
+        body: "Reusable lifecycle transitions turn governance requirements into explicit state, evidence and operator-owned next actions.",
+        cue: "Use this screen to discuss domain modeling rather than UI: guarded transitions, evidence capture and idempotent APIs.",
+      },
+      {
+        target: "#knowledge-control-center .knowledge-hero",
+        section: "knowledge-control-center",
+        knowledgeTab: "overview",
+        eyebrow: "06 · Enterprise differentiator",
+        title: "Present the governed LLM Wiki",
+        body: "The knowledge layer adds provenance, claim compilation, contradiction detection, replay, approval and versioned publication to RAG.",
+        cue: "Describe it as a governed knowledge supply chain, then mention the encrypted Secure Context Vault and fail-closed production configuration.",
+      },
+      {
+        target: "#policy-replay .panel-heading",
+        section: "policy-replay",
+        eyebrow: "07 · Regression discipline",
+        title: "Demonstrate policy replay",
+        body: "Historical and adversarial runs become a regression corpus for evaluating candidate policy behavior before release.",
+        cue: "This is the interview headline: governance changes are tested like software changes instead of being deployed on intuition.",
+      },
+      {
+        target: "#audit-trail",
+        section: "audit-trail",
+        eyebrow: "08 · Engineering close",
+        title: "End with evidence and boundaries",
+        body: "The audit timeline and evidence export make the system inspectable, while the documentation states what production integration still requires.",
+        cue: "Close honestly: production-shaped architecture, verified workflows and clear boundaries—not an unsupported production-ready claim.",
+      },
+    ],
+  },
+};
 
 function decisionIcon(decision) {
   if (decision === "allowed" || decision === "approved") return <CheckCircle2 size={16} />;
@@ -146,6 +300,8 @@ function App() {
   const [busyAction, setBusyAction] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
+  const [presentationPickerOpen, setPresentationPickerOpen] = useState(false);
+  const [presentationAudience, setPresentationAudience] = useState(null);
 
   async function refresh() {
     try {
@@ -744,6 +900,19 @@ function App() {
     window.history.replaceState(null, "", `#${sectionId}`);
   }
 
+  const handlePresentationNavigate = useCallback((step) => {
+    if (step.section) {
+      setActiveSection(step.section);
+      window.history.replaceState(null, "", `#${step.section}`);
+    }
+    if (step.knowledgeTab) setKnowledgeTab(step.knowledgeTab);
+  }, []);
+
+  function startPresentation(audience) {
+    setPresentationPickerOpen(false);
+    setPresentationAudience(audience);
+  }
+
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -774,9 +943,15 @@ function App() {
             <h1>Operator Console</h1>
             <p>Source-bound RAG, scoped tools, approvals, audit logs and backend safeguards.</p>
           </div>
-          <div className="run-status">
-            <span className="pulse" />
-            policy graph online
+          <div className="topbar-actions">
+            <button className="presentation-launcher" type="button" onClick={() => setPresentationPickerOpen(true)}>
+              <Presentation size={16} />
+              Demo presentation
+            </button>
+            <div className="run-status">
+              <span className="pulse" />
+              policy graph online
+            </div>
           </div>
         </header>
 
@@ -1674,8 +1849,202 @@ function App() {
         </div>
       </main>
       {selectedRun && <RunDrawer run={selectedRun} onClose={() => setSelectedRun(null)} />}
+      {presentationPickerOpen && (
+        <PresentationPicker
+          onClose={() => setPresentationPickerOpen(false)}
+          onStart={startPresentation}
+        />
+      )}
+      {presentationAudience && (
+        <PresentationTour
+          audience={presentationAudience}
+          onClose={() => setPresentationAudience(null)}
+          onNavigate={handlePresentationNavigate}
+        />
+      )}
     </div>
   );
+}
+
+function PresentationPicker({ onClose, onStart }) {
+  useEffect(() => {
+    function handleKeyDown(event) {
+      if (event.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
+
+  return (
+    <div className="presentation-picker-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+      <section className="presentation-picker" role="dialog" aria-modal="true" aria-labelledby="presentation-picker-title">
+        <div className="presentation-picker-heading">
+          <div className="presentation-picker-icon"><Presentation size={20} /></div>
+          <div>
+            <span>Guided product story</span>
+            <h2 id="presentation-picker-title">Choose your audience</h2>
+            <p>The interface stays live. The guide only gives you a clear order and a concise talk track.</p>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Close presentation picker"><X size={18} /></button>
+        </div>
+        <div className="presentation-story-options">
+          <button type="button" autoFocus onClick={() => onStart("client")}>
+            <i><BriefcaseBusiness size={20} /></i>
+            <span>
+              <small>Business narrative · {presentationStories.client.duration}</small>
+              <strong>{presentationStories.client.label}</strong>
+              <p>{presentationStories.client.description}</p>
+            </span>
+            <ArrowRight size={17} />
+          </button>
+          <button type="button" onClick={() => onStart("hr")}>
+            <i><Code2 size={20} /></i>
+            <span>
+              <small>Engineering narrative · {presentationStories.hr.duration}</small>
+              <strong>{presentationStories.hr.label}</strong>
+              <p>{presentationStories.hr.description}</p>
+            </span>
+            <ArrowRight size={17} />
+          </button>
+        </div>
+        <div className="presentation-picker-note">
+          <ShieldCheck size={15} />
+          <p>No data is changed automatically. You decide when to run each live action.</p>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function PresentationTour({ audience, onClose, onNavigate }) {
+  const story = presentationStories[audience];
+  const [stepIndex, setStepIndex] = useState(0);
+  const [targetRect, setTargetRect] = useState(null);
+  const headingRef = useRef(null);
+  const step = story.steps[stepIndex];
+
+  useEffect(() => {
+    onNavigate(step);
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const target = document.querySelector(step.target);
+    let animationFrame;
+    let settleTimer;
+
+    function measureTarget() {
+      window.cancelAnimationFrame(animationFrame);
+      animationFrame = window.requestAnimationFrame(() => {
+        const currentTarget = document.querySelector(step.target);
+        if (!currentTarget) {
+          setTargetRect(null);
+          return;
+        }
+        const rect = currentTarget.getBoundingClientRect();
+        const inset = 8;
+        const top = Math.max(10, rect.top - inset);
+        const left = Math.max(10, rect.left - inset);
+        const right = Math.min(window.innerWidth - 10, rect.right + inset);
+        const bottom = Math.min(window.innerHeight - 10, rect.bottom + inset);
+        setTargetRect({ top, left, width: Math.max(0, right - left), height: Math.max(0, bottom - top) });
+      });
+    }
+
+    target?.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "center" });
+    measureTarget();
+    settleTimer = window.setTimeout(measureTarget, reduceMotion ? 20 : 320);
+    window.addEventListener("resize", measureTarget);
+    window.addEventListener("scroll", measureTarget, true);
+    headingRef.current?.focus({ preventScroll: true });
+
+    return () => {
+      window.cancelAnimationFrame(animationFrame);
+      window.clearTimeout(settleTimer);
+      window.removeEventListener("resize", measureTarget);
+      window.removeEventListener("scroll", measureTarget, true);
+    };
+  }, [onNavigate, step]);
+
+  useEffect(() => {
+    function handleKeyDown(event) {
+      if (event.key === "Escape") {
+        onClose();
+        return;
+      }
+      const target = event.target;
+      if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement || target?.isContentEditable) return;
+      if (event.key === "ArrowRight") {
+        event.preventDefault();
+        setStepIndex((current) => Math.min(story.steps.length - 1, current + 1));
+      }
+      if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        setStepIndex((current) => Math.max(0, current - 1));
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose, story.steps.length]);
+
+  const cardStyle = getPresentationCardStyle(targetRect);
+  const progress = ((stepIndex + 1) / story.steps.length) * 100;
+
+  return (
+    <div className="presentation-tour" aria-live="polite">
+      <div className="presentation-dim" aria-hidden="true" />
+      {targetRect && <div className="presentation-spotlight" style={targetRect} aria-hidden="true" />}
+      <section className="presentation-tooltip" style={cardStyle} role="dialog" aria-label={`${story.label} presentation step ${stepIndex + 1}`}>
+        <div className="presentation-tooltip-topline">
+          <span><Presentation size={14} />{story.shortLabel}</span>
+          <button type="button" onClick={onClose} aria-label="Exit presentation mode"><X size={16} /></button>
+        </div>
+        <div className="presentation-progress" aria-label={`Step ${stepIndex + 1} of ${story.steps.length}`}>
+          <i style={{ width: `${progress}%` }} />
+        </div>
+        <span className="presentation-step-label">{step.eyebrow}</span>
+        <h2 ref={headingRef} tabIndex={-1}>{step.title}</h2>
+        <p className="presentation-step-body">{step.body}</p>
+        <div className="presentation-cue">
+          <span>Presenter cue</span>
+          <p>{step.cue}</p>
+        </div>
+        <footer className="presentation-tooltip-footer">
+          <span>{stepIndex + 1} / {story.steps.length}</span>
+          <div>
+            <button type="button" className="presentation-back" disabled={stepIndex === 0} onClick={() => setStepIndex((current) => current - 1)}>
+              <ArrowLeft size={15} />Back
+            </button>
+            {stepIndex === story.steps.length - 1 ? (
+              <button type="button" className="presentation-next" onClick={onClose}>Finish<CheckCircle2 size={15} /></button>
+            ) : (
+              <button type="button" className="presentation-next" onClick={() => setStepIndex((current) => current + 1)}>Next<ArrowRight size={15} /></button>
+            )}
+          </div>
+        </footer>
+        <div className="presentation-shortcuts"><span>← → navigate</span><span>Esc exit</span></div>
+      </section>
+    </div>
+  );
+}
+
+function getPresentationCardStyle(targetRect) {
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+  if (viewportWidth <= 760) return { bottom: 12, left: 12, right: 12 };
+  if (!targetRect) return { left: "50%", top: "50%", transform: "translate(-50%, -50%)" };
+
+  const cardWidth = 380;
+  const cardHeight = 410;
+  const gap = 18;
+  const clampTop = Math.max(18, Math.min(targetRect.top, viewportHeight - cardHeight - 18));
+  if (viewportWidth - (targetRect.left + targetRect.width) >= cardWidth + gap + 12) {
+    return { left: targetRect.left + targetRect.width + gap, top: clampTop };
+  }
+  if (targetRect.left >= cardWidth + gap + 12) {
+    return { left: targetRect.left - cardWidth - gap, top: clampTop };
+  }
+  if (viewportHeight - (targetRect.top + targetRect.height) >= cardHeight + gap) {
+    return { left: Math.max(18, Math.min(targetRect.left, viewportWidth - cardWidth - 18)), top: targetRect.top + targetRect.height + gap };
+  }
+  return { bottom: 18, right: 18 };
 }
 
 function Metric({ label, value, tone = "default" }) {
