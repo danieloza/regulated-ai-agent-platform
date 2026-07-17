@@ -346,3 +346,132 @@ curl -s -X POST http://127.0.0.1:8000/api/v1/control-lifecycles/transitions \
 ```
 
 The same key and payload return the stored response with `idempotency_replayed: true`. Reusing the key with a different payload returns `409`. Audit endpoints support `limit`, `offset`, and optional `event_type`; outbox access requires `admin`.
+
+## Knowledge Control Center
+
+Read the explainable health controls, action queue, sources, claims, candidate changes, and releases:
+
+```bash
+curl -s http://127.0.0.1:8000/api/knowledge/overview
+```
+
+Register an immutable source and compile candidate claims:
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/api/knowledge/sources \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title":"Customer Communication Standard 2026",
+    "content":"Customer communications must use approved templates and cite the governing policy before regulated guidance is provided.",
+    "classification":"internal",
+    "owner":"Knowledge Governance",
+    "source_type":"standard",
+    "review_days":365
+  }'
+```
+
+The response contains the immutable source metadata and a `pending_review` change. Injection or secret-bearing content is registered as `quarantined` and produces no candidate claims.
+
+Replay a candidate against historical runs:
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/api/knowledge/replay \
+  -H "Content-Type: application/json" \
+  -d '{"change_id":"kchg_retention_2026","limit":100}'
+```
+
+Approve and publish after reviewing provenance, contradictions, and replay evidence:
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/api/knowledge/changes/kchg_retention_2026/decision \
+  -H "Content-Type: application/json" \
+  -d '{
+    "decision":"approved",
+    "operator_id":"knowledge.reviewer",
+    "comment":"Reviewed source provenance, contradiction impact, and historical replay evidence."
+  }'
+```
+
+High-risk approvals require a substantive comment. Approval supersedes contradicted claims, indexes the approved source, and returns a release version plus SHA-256 integrity digest.
+
+## Secure Context Vault
+
+The local workstation credential is documented in [Governed LLM Wiki](knowledge-governance.md). For any shared environment, configure a password hash and master secret or replace this flow with corporate step-up MFA.
+
+Unlock a ten-minute context session:
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/api/knowledge/secure-context/unlock \
+  -H "Content-Type: application/json" \
+  -d '{"password":"replace-with-configured-password","operator_id":"operator.demo"}'
+```
+
+Use the returned token to create encrypted supplemental context:
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/api/knowledge/secure-context \
+  -H "Content-Type: application/json" \
+  -H "X-Secure-Context-Token: $SECURE_CONTEXT_TOKEN" \
+  -d '{
+    "content":"Customer identity was verified by Compliance Operations for this investigation.",
+    "purpose":"Compliance investigation",
+    "scope":"current_run",
+    "classification":"confidential",
+    "expires_hours":1,
+    "model_access":true
+  }'
+```
+
+Attach the returned context ID to a governed run:
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/api/assistant/query \
+  -H "Content-Type: application/json" \
+  -H "X-Secure-Context-Token: $SECURE_CONTEXT_TOKEN" \
+  -d '{
+    "question":"How should approved sources be used?",
+    "user_id":"operator.demo",
+    "secure_context_id":"ctx_replace_me"
+  }'
+```
+
+A `current_run` context cannot be reused. The run audit contains purpose, scope, classification, model-access state, and digest but not plaintext content.
+
+Enterprise clients use the authenticated, tenant-bound knowledge surface:
+
+```bash
+curl -s http://127.0.0.1:8000/api/v1/knowledge/claims?limit=50 \
+  -H "Authorization: Bearer $ENTERPRISE_API_KEY" \
+  -H "X-Tenant-ID: demo"
+```
+
+Source ingestion requires the `operator` role and an idempotency key. The outbox event contains identifiers, classification, status, and content hash rather than source plaintext.
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/api/v1/knowledge/sources \
+  -H "Authorization: Bearer $ENTERPRISE_API_KEY" \
+  -H "X-Tenant-ID: demo" \
+  -H "Idempotency-Key: source-ingest-20260717-001" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title":"Customer Communication Standard 2026",
+    "content":"Customer communications must use approved templates before regulated guidance is provided.",
+    "classification":"internal",
+    "owner":"Knowledge Governance",
+    "source_type":"standard",
+    "review_days":365
+  }'
+```
+
+Replay requires the `operator` role and an idempotency key:
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/api/v1/knowledge/replays \
+  -H "Authorization: Bearer $ENTERPRISE_API_KEY" \
+  -H "X-Tenant-ID: demo" \
+  -H "Idempotency-Key: retention-replay-20260717-001" \
+  -H "Content-Type: application/json" \
+  -d '{"change_id":"kchg_retention_2026","limit":100}'
+```
+
+Knowledge decisions require the `approver` role and also produce an integration outbox event.

@@ -4,10 +4,14 @@ import {
   Activity,
   AlertTriangle,
   Beaker,
+  BookOpenCheck,
   CheckCircle2,
   ChevronRight,
+  Clock3,
   Database,
   Download,
+  Eye,
+  EyeOff,
   FileText,
   FileSpreadsheet,
   Fingerprint,
@@ -15,6 +19,9 @@ import {
   Gauge,
   GitCompareArrows,
   LockKeyhole,
+  KeyRound,
+  Layers3,
+  Link2,
   MessageSquareText,
   OctagonX,
   Play,
@@ -47,6 +54,7 @@ const sections = [
   ["Governance Lifecycle", "governance-lifecycle", ShieldCheck],
   ["Data Subject Requests", "data-subject-requests", Fingerprint],
   ["Control Lifecycle Matrix", "control-lifecycle-matrix", Workflow],
+  ["Knowledge Control Center", "knowledge-control-center", BookOpenCheck],
   ["Governance Registry", "governance-registry", FileSpreadsheet],
   ["Tool Gateway", "tool-gateway", Workflow],
   ["Policy Engine", "policy-engine", Gavel],
@@ -108,6 +116,32 @@ function App() {
   const [controlLifecycles, setControlLifecycles] = useState(null);
   const [selectedControlKind, setSelectedControlKind] = useState("cost");
   const [controlLifecycleBusy, setControlLifecycleBusy] = useState("");
+  const [knowledge, setKnowledge] = useState(null);
+  const [knowledgeTab, setKnowledgeTab] = useState("overview");
+  const [selectedKnowledgeChangeId, setSelectedKnowledgeChangeId] = useState("kchg_retention_2026");
+  const [knowledgeBusy, setKnowledgeBusy] = useState("");
+  const [knowledgeReplay, setKnowledgeReplay] = useState(null);
+  const [knowledgeDecisionComment, setKnowledgeDecisionComment] = useState("Reviewed source provenance, contradiction impact, and historical replay evidence.");
+  const [sourceDraft, setSourceDraft] = useState({
+    title: "Customer Communication Standard 2026",
+    content: "Customer communications must use approved templates and cite the governing policy when providing regulated guidance.",
+    classification: "internal",
+    owner: "Knowledge Governance",
+    source_type: "standard",
+  });
+  const [secureContextStatus, setSecureContextStatus] = useState(null);
+  const [secureContextToken, setSecureContextToken] = useState("");
+  const [secureContextPassword, setSecureContextPassword] = useState("");
+  const [showContextPassword, setShowContextPassword] = useState(false);
+  const [secureContextDraft, setSecureContextDraft] = useState({
+    purpose: "Compliance investigation context",
+    scope: "current_run",
+    classification: "confidential",
+    expires_hours: 24,
+    model_access: true,
+    content: "Customer identity was verified by Compliance Operations. Use this context only to improve retrieval and do not disclose it in the final answer.",
+  });
+  const [activeSecureContext, setActiveSecureContext] = useState(null);
   const governanceInputRef = useRef(null);
   const [busyAction, setBusyAction] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
@@ -263,6 +297,155 @@ function App() {
     }
   }
 
+  async function loadKnowledge() {
+    try {
+      const [overviewResponse, contextResponse] = await Promise.all([
+        fetch(`${API}/api/knowledge/overview`),
+        fetch(`${API}/api/knowledge/secure-context`),
+      ]);
+      if (!overviewResponse.ok) throw new Error(`Knowledge overview failed: ${overviewResponse.status}`);
+      if (!contextResponse.ok) throw new Error(`Secure context status failed: ${contextResponse.status}`);
+      const overview = await overviewResponse.json();
+      setKnowledge(overview);
+      setSecureContextStatus(await contextResponse.json());
+      if (!overview.changes?.some((item) => item.id === selectedKnowledgeChangeId && ["pending_review", "changes_requested"].includes(item.status))) {
+        setSelectedKnowledgeChangeId(overview.changes?.find((item) => ["pending_review", "changes_requested"].includes(item.status))?.id ?? overview.changes?.[0]?.id ?? "");
+      }
+    } catch (error) {
+      setErrorMessage(error.message);
+    }
+  }
+
+  async function ingestKnowledgeSource() {
+    setKnowledgeBusy("ingest");
+    setErrorMessage("");
+    try {
+      const response = await fetch(`${API}/api/knowledge/sources`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...sourceDraft, review_days: 365 }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload?.error?.message ?? payload?.detail ?? `Knowledge ingest failed: ${response.status}`);
+      setSelectedKnowledgeChangeId(payload.change.id);
+      setKnowledgeTab("changes");
+      setStatusMessage(`${payload.source.title} compiled into ${payload.change.proposed_claims.length} reviewable claims.`);
+      await loadKnowledge();
+    } catch (error) {
+      setErrorMessage(error.message);
+    } finally {
+      setKnowledgeBusy("");
+    }
+  }
+
+  async function replayKnowledgeChange(changeId = selectedKnowledgeChangeId) {
+    if (!changeId) return;
+    setKnowledgeBusy("replay");
+    setErrorMessage("");
+    try {
+      const response = await fetch(`${API}/api/knowledge/replay`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ change_id: changeId, limit: 100 }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload?.error?.message ?? payload?.detail ?? `Knowledge replay failed: ${response.status}`);
+      setKnowledgeReplay(payload);
+      setKnowledgeTab("replay");
+      setStatusMessage(`Knowledge replay completed: ${payload.summary.affected} of ${payload.summary.total} historical runs require regeneration.`);
+      await loadKnowledge();
+    } catch (error) {
+      setErrorMessage(error.message);
+    } finally {
+      setKnowledgeBusy("");
+    }
+  }
+
+  async function decideKnowledgeChange(decision) {
+    if (!selectedKnowledgeChangeId) return;
+    setKnowledgeBusy(decision);
+    setErrorMessage("");
+    try {
+      const response = await fetch(`${API}/api/knowledge/changes/${selectedKnowledgeChangeId}/decision`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ decision, operator_id: "knowledge.reviewer", comment: knowledgeDecisionComment }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload?.error?.message ?? payload?.detail ?? `Knowledge decision failed: ${response.status}`);
+      setStatusMessage(payload.release ? `Knowledge release ${payload.release.version} published with integrity evidence.` : `Knowledge change marked ${decision}.`);
+      await loadKnowledge();
+    } catch (error) {
+      setErrorMessage(error.message);
+    } finally {
+      setKnowledgeBusy("");
+    }
+  }
+
+  async function unlockSecureContext() {
+    setKnowledgeBusy("unlock");
+    setErrorMessage("");
+    try {
+      const response = await fetch(`${API}/api/knowledge/secure-context/unlock`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: secureContextPassword, operator_id: "operator.demo" }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload?.error?.message ?? payload?.detail ?? "Step-up authentication failed.");
+      setSecureContextToken(payload.access_token);
+      setSecureContextPassword("");
+      setStatusMessage("Secure Context Vault unlocked for 10 minutes.");
+    } catch (error) {
+      setErrorMessage(error.message);
+    } finally {
+      setKnowledgeBusy("");
+    }
+  }
+
+  async function saveSecureContext() {
+    setKnowledgeBusy("secure-context");
+    setErrorMessage("");
+    try {
+      const response = await fetch(`${API}/api/knowledge/secure-context`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Secure-Context-Token": secureContextToken },
+        body: JSON.stringify(secureContextDraft),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload?.error?.message ?? payload?.detail ?? `Protected context failed: ${response.status}`);
+      setActiveSecureContext(payload);
+      setStatusMessage(`Protected context ${payload.id} encrypted and attached to the next run.`);
+      await loadKnowledge();
+    } catch (error) {
+      setErrorMessage(error.message);
+    } finally {
+      setKnowledgeBusy("");
+    }
+  }
+
+  async function revokeSecureContext() {
+    if (!activeSecureContext) return;
+    setKnowledgeBusy("revoke-context");
+    setErrorMessage("");
+    try {
+      const response = await fetch(`${API}/api/knowledge/secure-context/${activeSecureContext.id}/revoke`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Secure-Context-Token": secureContextToken },
+        body: JSON.stringify({ reason: "Operator revoked protected context from the Knowledge Control Center." }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload?.error?.message ?? payload?.detail ?? `Context revoke failed: ${response.status}`);
+      setActiveSecureContext(null);
+      setStatusMessage("Protected context revoked.");
+      await loadKnowledge();
+    } catch (error) {
+      setErrorMessage(error.message);
+    } finally {
+      setKnowledgeBusy("");
+    }
+  }
+
   async function advanceControlLifecycle(item) {
     if (!item?.next_action) return;
     setControlLifecycleBusy(item.kind);
@@ -298,6 +481,7 @@ function App() {
     loadLifecycle();
     loadDataSubject();
     loadControlLifecycles();
+    loadKnowledge();
   }, []);
 
   async function askAssistant(nextQuery = query) {
@@ -309,12 +493,16 @@ function App() {
       setQuery(nextQuery);
       const response = await fetch(`${API}/api/assistant/query`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: nextQuery, user_id: "operator.demo" }),
+        headers: {
+          "Content-Type": "application/json",
+          ...(activeSecureContext && secureContextToken ? { "X-Secure-Context-Token": secureContextToken } : {}),
+        },
+        body: JSON.stringify({ question: nextQuery, user_id: "operator.demo", secure_context_id: activeSecureContext?.id ?? null }),
       });
       if (!response.ok) throw new Error(`Assistant request failed: ${response.status}`);
       const payload = await response.json();
       setRun(payload);
+      if (payload.secure_context?.scope === "current_run") setActiveSecureContext(null);
       openRunDetails(payload.run_id);
       setStatusMessage(`Run ${payload.run_id} completed with ${payload.policy.decision}.`);
       refresh();
@@ -545,6 +733,10 @@ function App() {
     () => controlLifecycles?.lifecycles?.find((item) => item.kind === selectedControlKind) ?? null,
     [controlLifecycles, selectedControlKind],
   );
+  const selectedKnowledgeChange = useMemo(
+    () => knowledge?.changes?.find((item) => item.id === selectedKnowledgeChangeId) ?? null,
+    [knowledge, selectedKnowledgeChangeId],
+  );
 
   function goToSection(sectionId) {
     setActiveSection(sectionId);
@@ -612,6 +804,13 @@ function App() {
               </div>
               <button className="icon-button" disabled={busyAction === "refresh"} onClick={manualRefresh} title="Refresh"><RefreshCw size={16} /></button>
             </div>
+            {activeSecureContext && (
+              <div className="attached-context" role="status">
+                <LockKeyhole size={15} />
+                <span><strong>Protected context attached</strong><small>{activeSecureContext.purpose} · expires {new Date(activeSecureContext.expires_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</small></span>
+                <button type="button" onClick={revokeSecureContext} aria-label="Revoke protected context"><X size={14} /></button>
+              </div>
+            )}
             <textarea value={query} onChange={(event) => setQuery(event.target.value)} />
             <div className="sample-row">
               {sampleQueries.map((item) => (
@@ -920,6 +1119,184 @@ function App() {
                 </div>
               </div>
             )}
+          </section>
+
+          <section className="panel knowledge-center-panel" id="knowledge-control-center">
+            <div className="knowledge-hero">
+              <div>
+                <p className="section-kicker knowledge">Governed LLM Wiki</p>
+                <h2>Knowledge Control Center</h2>
+                <p>Compile immutable sources into reviewable claims, detect contradictions and publish evidence-backed knowledge releases.</p>
+              </div>
+              <div className="knowledge-release-state">
+                <span className="pulse" />
+                <div><small>Production knowledge</small><strong>{knowledge?.metrics?.current_release ?? "loading"}</strong></div>
+                <button type="button" onClick={loadKnowledge} aria-label="Refresh knowledge controls"><RefreshCw size={15} /></button>
+              </div>
+            </div>
+
+            <div className="knowledge-metrics">
+              <div className="knowledge-health"><span>Knowledge health</span><strong>{knowledge?.metrics?.health ?? "--"}<small>%</small></strong><i style={{ "--health": `${knowledge?.metrics?.health ?? 0}%` }} /></div>
+              <div><span>Immutable sources</span><strong>{knowledge?.metrics?.sources ?? "--"}</strong><small>registered</small></div>
+              <div><span>Published claims</span><strong>{knowledge?.metrics?.published_claims ?? "--"}</strong><small>with provenance</small></div>
+              <div className="attention"><span>Contradictions</span><strong>{knowledge?.metrics?.contradictions ?? "--"}</strong><small>require review</small></div>
+              <div><span>Historical impact</span><strong>{knowledge?.metrics?.affected_runs ?? "--"}</strong><small>runs affected</small></div>
+              <div className="attention"><span>Pending reviews</span><strong>{knowledge?.metrics?.pending_reviews ?? "--"}</strong><small>approval gate</small></div>
+            </div>
+
+            <div className="knowledge-tabs" role="tablist" aria-label="Knowledge Control Center views">
+              {[
+                ["overview", "Overview"],
+                ["changes", "Change reviews"],
+                ["sources", "Sources"],
+                ["claims", "Claims"],
+                ["replay", "Replay & impact"],
+                ["releases", "Releases"],
+              ].map(([id, label]) => (
+                <button className={knowledgeTab === id ? "active" : ""} type="button" role="tab" aria-selected={knowledgeTab === id} key={id} onClick={() => setKnowledgeTab(id)}>{label}</button>
+              ))}
+            </div>
+
+            <div className="knowledge-workspace">
+              <div className="knowledge-main">
+                {knowledgeTab === "overview" && (
+                  <div className="knowledge-overview-view">
+                    <article className="control-health-card">
+                      <div className="knowledge-card-heading"><div><span>Control posture</span><h3>Can agents trust the current knowledge?</h3></div><ShieldCheck size={19} /></div>
+                      <div className="knowledge-control-bars">
+                        {Object.entries(knowledge?.controls ?? {}).map(([key, value]) => (
+                          <div key={key}><span>{key.replaceAll("_", " ")}</span><div><i style={{ width: `${value}%` }} /></div><strong>{value}%</strong></div>
+                        ))}
+                      </div>
+                      <div className="compiler-contract">
+                        <Layers3 size={16} />
+                        <p><strong>Compiler contract</strong><span>Immutable raw sources · untrusted input scan · human publication gate · versioned output</span></p>
+                        <code>{knowledge?.compiler?.mode ?? "loading"}</code>
+                      </div>
+                    </article>
+                    <article className="knowledge-attention-card">
+                      <div className="knowledge-card-heading"><div><span>Operator queue</span><h3>Requires attention</h3></div><strong>{knowledge?.action_queue?.length ?? 0}</strong></div>
+                      <div className="knowledge-action-list">
+                        {(knowledge?.action_queue ?? []).map((item) => (
+                          <button type="button" key={`${item.type}-${item.id}`} onClick={() => { if (item.type !== "freshness") { setSelectedKnowledgeChangeId(item.id); setKnowledgeTab("changes"); } else setKnowledgeTab("sources"); }}>
+                            <i className={item.severity}><AlertTriangle size={14} /></i>
+                            <span><strong>{item.title}</strong><small>{item.detail}</small><code>{item.owner}</code></span>
+                            <ChevronRight size={15} />
+                          </button>
+                        ))}
+                        {!knowledge?.action_queue?.length && <div className="knowledge-empty"><CheckCircle2 size={18} /><p><strong>No open knowledge risks</strong><span>All controls are within their review thresholds.</span></p></div>}
+                      </div>
+                    </article>
+                    <article className="knowledge-pipeline-card">
+                      <div className="knowledge-card-heading"><div><span>Compilation pipeline</span><h3>Source-to-release flow</h3></div><Workflow size={18} /></div>
+                      <div className="knowledge-pipeline">
+                        {Object.entries(knowledge?.pipeline ?? {}).map(([key, value], index) => (
+                          <React.Fragment key={key}>
+                            {index > 0 && <ChevronRight size={14} />}
+                            <div><strong>{value}</strong><span>{key.replaceAll("_", " ")}</span></div>
+                          </React.Fragment>
+                        ))}
+                      </div>
+                    </article>
+                  </div>
+                )}
+
+                {knowledgeTab === "changes" && (
+                  <div className="knowledge-change-view">
+                    <aside className="knowledge-change-list">
+                      <span>Change queue</span>
+                      {(knowledge?.changes ?? []).map((item) => (
+                        <button className={selectedKnowledgeChangeId === item.id ? "selected" : ""} type="button" key={item.id} onClick={() => setSelectedKnowledgeChangeId(item.id)}>
+                          <i className={item.risk} /><div><strong>{item.summary}</strong><small>{item.id} · {item.status.replaceAll("_", " ")}</small></div><span>{item.contradictions.length}</span>
+                        </button>
+                      ))}
+                    </aside>
+                    <div className="knowledge-diff-review">
+                      {selectedKnowledgeChange ? (
+                        <>
+                          <div className="diff-review-heading">
+                            <div><span className={`risk-label ${selectedKnowledgeChange.risk}`}>{selectedKnowledgeChange.risk} risk</span><h3>{selectedKnowledgeChange.summary}</h3><code>{selectedKnowledgeChange.id} · {selectedKnowledgeChange.affected_runs} runs affected</code></div>
+                            <button type="button" disabled={Boolean(knowledgeBusy)} onClick={() => replayKnowledgeChange(selectedKnowledgeChange.id)}><Play size={14} />Replay impact</button>
+                          </div>
+                          <div className="claim-diff-list">
+                            {selectedKnowledgeChange.contradictions.map((item) => (
+                              <article key={item.id}>
+                                <div className="diff-line removed"><span>−</span><p>{item.published_statement}</p></div>
+                                <div className="diff-line added"><span>+</span><p>{item.candidate_statement}</p></div>
+                                <footer><AlertTriangle size={13} /><strong>{item.reason}</strong><span>{Math.round(item.similarity * 100)}% semantic overlap</span></footer>
+                              </article>
+                            ))}
+                            {!selectedKnowledgeChange.contradictions.length && selectedKnowledgeChange.proposed_claims.map((claim) => (
+                              <article key={claim.id}><div className="diff-line added"><span>+</span><p>{claim.statement}</p></div><footer><Link2 size={13} /><strong>New sourced claim</strong><span>{Math.round(claim.confidence * 100)}% extraction confidence</span></footer></article>
+                            ))}
+                          </div>
+                          {["pending_review", "changes_requested"].includes(selectedKnowledgeChange.status) && (
+                            <div className="knowledge-decision-bar">
+                              <label htmlFor="knowledge-decision-comment">Reviewer evidence comment</label>
+                              <textarea id="knowledge-decision-comment" value={knowledgeDecisionComment} onChange={(event) => setKnowledgeDecisionComment(event.target.value)} />
+                              <div><button className="reject" type="button" disabled={Boolean(knowledgeBusy)} onClick={() => decideKnowledgeChange("rejected")}>Reject</button><button className="request" type="button" disabled={Boolean(knowledgeBusy)} onClick={() => decideKnowledgeChange("changes_requested")}>Request changes</button><button className="approve" type="button" disabled={Boolean(knowledgeBusy)} onClick={() => decideKnowledgeChange("approved")}><ShieldCheck size={14} />Approve and publish</button></div>
+                            </div>
+                          )}
+                        </>
+                      ) : <div className="knowledge-empty"><GitCompareArrows size={22} /><p><strong>Select a knowledge change</strong><span>Review its claims, contradictions and historical impact.</span></p></div>}
+                    </div>
+                  </div>
+                )}
+
+                {knowledgeTab === "sources" && (
+                  <div className="knowledge-sources-view">
+                    <article className="source-ingest-card">
+                      <div className="knowledge-card-heading"><div><span>Immutable source intake</span><h3>Compile a new source</h3></div><Plus size={18} /></div>
+                      <div className="source-form-grid"><label htmlFor="source-title">Source title<input id="source-title" value={sourceDraft.title} onChange={(event) => setSourceDraft({ ...sourceDraft, title: event.target.value })} /></label><label htmlFor="source-owner">Control owner<input id="source-owner" value={sourceDraft.owner} onChange={(event) => setSourceDraft({ ...sourceDraft, owner: event.target.value })} /></label><label htmlFor="source-classification">Classification<select id="source-classification" value={sourceDraft.classification} onChange={(event) => setSourceDraft({ ...sourceDraft, classification: event.target.value })}><option>public</option><option>internal</option><option>confidential</option><option>restricted</option></select></label><label htmlFor="source-type">Source type<select id="source-type" value={sourceDraft.source_type} onChange={(event) => setSourceDraft({ ...sourceDraft, source_type: event.target.value })}><option>policy</option><option>procedure</option><option>standard</option><option>research</option><option>case_guidance</option></select></label></div>
+                      <label htmlFor="source-content">Source content<textarea id="source-content" value={sourceDraft.content} onChange={(event) => setSourceDraft({ ...sourceDraft, content: event.target.value })} /></label>
+                      <button className="knowledge-primary" type="button" disabled={knowledgeBusy === "ingest"} onClick={ingestKnowledgeSource}>{knowledgeBusy === "ingest" ? <TimerReset size={15} /> : <Layers3 size={15} />}{knowledgeBusy === "ingest" ? "Scanning and compiling..." : "Compile into reviewable claims"}</button>
+                    </article>
+                    <div className="knowledge-table-wrap"><table className="knowledge-table"><thead><tr><th>Source</th><th>Classification</th><th>Owner</th><th>Status</th><th>Review due</th><th>Integrity</th></tr></thead><tbody>{(knowledge?.sources ?? []).map((item) => <tr key={item.id}><td><strong>{item.title}</strong><code>{item.id}</code></td><td><span className="classification-pill">{item.classification}</span></td><td>{item.owner}</td><td><span className={`knowledge-status ${item.status}`}>{item.status.replaceAll("_", " ")}</span></td><td>{new Date(item.review_due).toLocaleDateString()}</td><td><code>{item.content_hash.slice(0, 10)}…</code></td></tr>)}</tbody></table></div>
+                  </div>
+                )}
+
+                {knowledgeTab === "claims" && (
+                  <div className="knowledge-table-wrap"><table className="knowledge-table claims"><thead><tr><th>Claim</th><th>Risk</th><th>Confidence</th><th>Owner</th><th>Status</th><th>Provenance</th></tr></thead><tbody>{(knowledge?.claims ?? []).map((item) => <tr key={item.id}><td><strong>{item.statement}</strong><code>{item.id}</code></td><td><span className={`risk-label ${item.risk}`}>{item.risk}</span></td><td>{Math.round(item.confidence * 100)}%</td><td>{item.owner}</td><td><span className={`knowledge-status ${item.status}`}>{item.status}</span></td><td><code>{item.source_id}</code></td></tr>)}</tbody></table></div>
+                )}
+
+                {knowledgeTab === "replay" && (
+                  <div className="knowledge-replay-view">
+                    <div className="replay-summary-row"><div><span>Historical runs</span><strong>{knowledgeReplay?.summary?.total ?? 0}</strong></div><div className="attention"><span>Answers to regenerate</span><strong>{knowledgeReplay?.summary?.affected ?? 0}</strong></div><div><span>Unchanged</span><strong>{knowledgeReplay?.summary?.unchanged ?? 0}</strong></div><div className="attention"><span>Contradictions</span><strong>{knowledgeReplay?.summary?.contradictions ?? selectedKnowledgeChange?.contradictions?.length ?? 0}</strong></div><button type="button" disabled={!selectedKnowledgeChangeId || Boolean(knowledgeBusy)} onClick={() => replayKnowledgeChange()}><Play size={15} />{knowledgeBusy === "replay" ? "Replaying..." : "Run replay"}</button></div>
+                    {knowledgeReplay?.results?.length ? <div className="knowledge-table-wrap"><table className="knowledge-table"><thead><tr><th>Run ID</th><th>Historical question</th><th>Current decision</th><th>Candidate effect</th><th>Risk</th></tr></thead><tbody>{knowledgeReplay.results.map((item) => <tr key={item.run_id}><td><code>{item.run_id}</code></td><td>{item.question}</td><td>{item.current_decision}</td><td>{item.candidate_effect.replaceAll("_", " ")}</td><td><span className={`risk-label ${item.risk}`}>{item.risk}</span></td></tr>)}</tbody></table></div> : <div className="knowledge-empty tall"><Play size={23} /><p><strong>Replay before publication</strong><span>Compare candidate knowledge with historical runs to detect answer regressions and unsupported claims.</span></p></div>}
+                  </div>
+                )}
+
+                {knowledgeTab === "releases" && (
+                  <div className="knowledge-release-list">{(knowledge?.releases ?? []).map((item) => <article key={item.id}><div className="release-icon"><BookOpenCheck size={18} /></div><div><span>Published knowledge release</span><h3>{item.version}</h3><p>{item.claims_added} claims added · {item.contradictions_resolved} contradictions resolved</p><code>{item.integrity_digest.slice(0, 20)}…</code></div><aside><span>{new Date(item.created_at).toLocaleDateString()}</span><strong>{item.approved_by}</strong><small>approved by</small></aside></article>)}</div>
+                )}
+              </div>
+
+              <aside className={`secure-context-vault ${secureContextToken ? "unlocked" : "locked"}`}>
+                <div className="vault-heading"><span>{secureContextToken ? <ShieldCheck size={18} /> : <LockKeyhole size={18} />}</span><div><small>Protected operational data</small><h3>Secure Context Vault</h3></div><code>{secureContextToken ? "unlocked" : "locked"}</code></div>
+                {!secureContextToken ? (
+                  <>
+                    <p>Add confidential, case-specific context without placing it in the published knowledge base or standard logs.</p>
+                    <div className="vault-security-list"><span><ShieldCheck size={13} />Encrypted at rest</span><span><Clock3 size={13} />10-minute access session</span><span><Fingerprint size={13} />Audited reveal and revoke</span></div>
+                    <label htmlFor="secure-context-password">Step-up password</label>
+                    <div className="password-input"><KeyRound size={15} /><input id="secure-context-password" type={showContextPassword ? "text" : "password"} value={secureContextPassword} onChange={(event) => setSecureContextPassword(event.target.value)} autoComplete="current-password" /><button type="button" onClick={() => setShowContextPassword(!showContextPassword)} aria-label={showContextPassword ? "Hide password" : "Show password"}>{showContextPassword ? <EyeOff size={15} /> : <Eye size={15} />}</button></div>
+                    {secureContextStatus?.security_mode === "local_development" && <small className="dev-credential">Local-only credential: <code>knowledge-demo-access</code>. Configure SSO/MFA and managed secrets for deployment.</small>}
+                    {["misconfigured", "disabled"].includes(secureContextStatus?.security_mode) && <small className="vault-config-error" role="alert">Vault access is disabled until both deployment secrets and corporate step-up controls are configured.</small>}
+                    <button className="vault-unlock" type="button" disabled={secureContextPassword.length < 8 || knowledgeBusy === "unlock" || ["misconfigured", "disabled"].includes(secureContextStatus?.security_mode)} onClick={unlockSecureContext}><LockKeyhole size={15} />{knowledgeBusy === "unlock" ? "Verifying..." : "Verify and unlock"}</button>
+                  </>
+                ) : activeSecureContext ? (
+                  <div className="active-context-card"><div><CheckCircle2 size={18} /><span><strong>Protected context attached</strong><small>{activeSecureContext.id}</small></span></div><dl><dt>Purpose</dt><dd>{activeSecureContext.purpose}</dd><dt>Scope</dt><dd>{activeSecureContext.scope.replaceAll("_", " ")}</dd><dt>Expires</dt><dd>{new Date(activeSecureContext.expires_at).toLocaleString()}</dd><dt>Integrity</dt><dd><code>{activeSecureContext.content_digest.slice(0, 14)}…</code></dd></dl><button type="button" disabled={knowledgeBusy === "revoke-context"} onClick={revokeSecureContext}><X size={14} />Revoke immediately</button></div>
+                ) : (
+                  <div className="secure-context-form">
+                    <label htmlFor="context-purpose">Purpose<input id="context-purpose" value={secureContextDraft.purpose} onChange={(event) => setSecureContextDraft({ ...secureContextDraft, purpose: event.target.value })} /></label>
+                    <div className="vault-field-row"><label htmlFor="context-scope">Scope<select id="context-scope" value={secureContextDraft.scope} onChange={(event) => setSecureContextDraft({ ...secureContextDraft, scope: event.target.value })}><option value="current_run">Current run</option><option value="case">Case</option><option value="agent">Agent</option><option value="knowledge_review">Knowledge review</option></select></label><label htmlFor="context-expiry">Expires<select id="context-expiry" value={secureContextDraft.expires_hours} onChange={(event) => setSecureContextDraft({ ...secureContextDraft, expires_hours: Number(event.target.value) })}><option value={1}>1 hour</option><option value={8}>8 hours</option><option value={24}>24 hours</option><option value={72}>72 hours</option></select></label></div>
+                    <label htmlFor="context-content">Additional confidential context<textarea id="context-content" value={secureContextDraft.content} onChange={(event) => setSecureContextDraft({ ...secureContextDraft, content: event.target.value })} /></label>
+                    <label className="vault-checkbox"><input type="checkbox" checked={secureContextDraft.model_access} onChange={(event) => setSecureContextDraft({ ...secureContextDraft, model_access: event.target.checked })} /><span><strong>Permit model access for this scope</strong><small>Platform policy always has higher precedence.</small></span></label>
+                    <div className="vault-warning"><ShieldAlert size={14} /><p>Credentials and API keys are rejected. Use an enterprise secrets vault reference instead.</p></div>
+                    <button className="vault-save" type="button" disabled={knowledgeBusy === "secure-context"} onClick={saveSecureContext}><LockKeyhole size={15} />{knowledgeBusy === "secure-context" ? "Encrypting context..." : "Save encrypted context"}</button>
+                  </div>
+                )}
+              </aside>
+            </div>
           </section>
 
           <section className="panel governance-panel" id="governance-registry">

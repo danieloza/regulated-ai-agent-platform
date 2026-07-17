@@ -23,6 +23,9 @@ The goal is to demonstrate the engineering layer around AI agents: RAG, governan
 ## What It Demonstrates
 
 - Secure RAG assistant with source-bound answers and citations.
+- Governed LLM Wiki with immutable sources, compiled claims, contradiction detection, knowledge diffs, historical impact replay, approval-gated publication, and versioned releases.
+- Knowledge Control Center with explainable health controls, operator review queue, claim provenance, source freshness, release lineage, and premium responsive UX.
+- Secure Context Vault with encrypted supplemental context, short-lived step-up access, scope and TTL controls, single-run consumption, secret/injection scans, and metadata-only audit evidence.
 - Prompt-injection lab with runnable attack scenarios and expected policy outcomes.
 - Agent tool gateway where the agent has no shell, secrets, or direct database credentials.
 - Policy engine decisions: `allowed`, `denied`, and `approval_required`.
@@ -68,6 +71,7 @@ The versioned `/api/v1` surface is separate from the local/demo endpoints used b
 - explicit `X-Tenant-ID` authorization and resource-tenant boundaries,
 - mandatory `Idempotency-Key` headers for mutations,
 - paginated lifecycle, audit, and outbox resources,
+- paginated knowledge sources, claims, changes, and releases with RBAC-gated replay and approval decisions,
 - authenticated actor attribution and pending integration outbox events.
 
 Enterprise credentials are disabled by default. Inject `ENTERPRISE_API_CREDENTIALS` through a secret manager using the schema documented in [API examples](docs/api-examples.md); do not commit raw keys.
@@ -128,10 +132,12 @@ Use this flow when presenting the project in an interview:
 2. Continue through containment, mitigation, policy draft, security replay, approval, and rollout. Show the evidence timeline and safe agent reactivation.
 3. Open `Data Subject Requests`. Show pseudonymous discovery, integrity-digested export, tool-level processing restriction, anonymization, and completion proof.
 4. Open `Control Lifecycle Matrix`. Compare cost, model change, human approval, and knowledge governance as separate guarded loops using one lifecycle engine.
-5. Go to `Prompt Injection Lab`, run an instruction-override attack, and inspect the denied run with risk factors and audit evidence.
-6. Use `Tool Gateway` to compare an allowed read with a regulated write that becomes `approval_required`.
-7. Show `/api/v1` authentication, tenant context, RBAC, idempotency replay, and the generated integration outbox event.
-8. Go to `Ledger Demo` and compare unsafe read-modify-write with the atomic SQL update:
+5. Open `Knowledge Control Center`. Review the five-to-seven-year retention contradiction, run historical impact replay, and inspect the approval-gated knowledge diff.
+6. Unlock `Secure Context Vault`, attach confidential context to one run, and show that the audit records only its metadata and integrity digest.
+7. Go to `Prompt Injection Lab`, run an instruction-override attack, and inspect the denied run with risk factors and audit evidence.
+8. Use `Tool Gateway` to compare an allowed read with a regulated write that becomes `approval_required`.
+9. Show `/api/v1` authentication, tenant context, RBAC, idempotency replay, and the generated integration outbox event.
+10. Go to `Ledger Demo` and compare unsafe read-modify-write with the atomic SQL update:
 
 ```sql
 UPDATE accounts
@@ -223,6 +229,8 @@ flowchart LR
   UI --> API["FastAPI Control Plane"]
   Gateway --> API
   API --> Lifecycles["Governance Lifecycle Engine"]
+  API --> Knowledge["Governed Knowledge Compiler"]
+  API --> Context["Secure Context Vault"]
   API --> Policy["Policy Engine"]
   API --> RAG["Secure RAG Pipeline"]
   API --> Tools["Scoped Tool Gateway"]
@@ -237,6 +245,9 @@ flowchart LR
   Approvals --> DB
   Ledger --> DB
   Lifecycles --> DB
+  Knowledge --> DB
+  Context --> DB
+  Knowledge --> RAG
   Outbox --> DB
   Policy --> Evals["Security Evals"]
 ```
@@ -269,6 +280,7 @@ kubectl -n regulated-ai get pods,svc,hpa
 ## Engineering Notes
 
 - Architecture decisions: [docs/adr](docs/adr)
+- Governed LLM Wiki and Secure Context: [docs/knowledge-governance.md](docs/knowledge-governance.md)
 - API examples: [docs/api-examples.md](docs/api-examples.md)
 - Operations checklist: [docs/operations-checklist.md](docs/operations-checklist.md)
 - Enterprise deployment roadmap: [docs/enterprise-deployment-roadmap.md](docs/enterprise-deployment-roadmap.md)

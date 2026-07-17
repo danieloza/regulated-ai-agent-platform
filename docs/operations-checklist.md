@@ -58,6 +58,20 @@ Use this checklist when moving from a local evaluation to a shared or deployed e
 - [ ] Apply gateway-level TLS, request-size limits, rate limits, IP policy, and credential abuse alerts before external exposure.
 - [ ] Confirm audit and lifecycle pagination limits protect the database from unbounded reads.
 
+## Governed Knowledge and Secure Context
+
+- [ ] Confirm every source has a business owner, classification, review date, integrity hash, and inherited access policy.
+- [ ] Route prompt-injection and secret-bearing sources to quarantine and alert on attempted publication.
+- [ ] Evaluate claim extraction and contradiction detection against representative domain documents before enabling automated compilation.
+- [ ] Require historical replay and expert review for material or high-risk knowledge changes.
+- [ ] Monitor stale-source SLAs, unresolved contradictions, pending-review age, replay failures, and release rollback events.
+- [ ] Configure `SECURE_CONTEXT_MASTER_SECRET` and `SECURE_CONTEXT_PASSWORD_HASH` through a secret manager; never use the local credential in a shared environment.
+- [ ] Set `APP_ENV=production` outside local development and verify missing or partial Secure Context configuration fails closed.
+- [ ] Replace password step-up with corporate OIDC/MFA and role-separate create, reveal, approve, publish, and revoke actions.
+- [ ] Test encryption-key rotation, context expiry, single-run consumption, emergency revocation, retention enforcement, and recovery procedures.
+- [ ] Verify plaintext protected context does not appear in standard logs, traces, evidence exports, analytics, or error reports.
+- [ ] Reject credentials and API keys from protected context and require references to the enterprise secrets vault.
+
 ## CORS
 
 - [ ] Replace localhost defaults with the exact deployed frontend origins.
@@ -84,6 +98,8 @@ Use this checklist when moving from a local evaluation to a shared or deployed e
 - [ ] Confirm regulated writes remain `approval_required` and read-only tools remain scoped.
 - [ ] Confirm malicious retrieved documents are treated as untrusted data and are not repeated as instructions.
 - [ ] Confirm missing retrieval evidence produces the safe `I don't know` response.
+- [ ] Confirm unsafe knowledge sources are quarantined, high-risk diffs require review comments, and only approved sources enter RAG.
+- [ ] Confirm protected context cannot override policy, is owner-bound, expires, and produces metadata-only audit evidence.
 - [ ] Test PII redaction in audit summaries and operator comments.
 - [ ] Add payload validation, authentication, authorization, and abuse tests before exposing the API beyond a controlled evaluation environment.
 

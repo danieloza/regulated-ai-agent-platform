@@ -9,6 +9,8 @@ This repository is designed as a production-shaped portfolio project, not a drop
 - Authentication is simplified through demo user identifiers.
 - The policy engine is deterministic and intentionally readable.
 - The dashboard is an operator demo console, not a full multi-tenant admin product.
+- The governed knowledge compiler uses deterministic local claim extraction and conservative contradiction rules rather than an evaluated domain model.
+- Secure Context uses a local step-up credential when deployment secrets are not configured; this mode is only for workstation development.
 - Kubernetes manifests show deployment patterns, probes, limits, ConfigMap/Secret split, and non-root containers, but they are not a complete platform baseline.
 
 ## Production Requirements
@@ -24,6 +26,8 @@ This repository is designed as a production-shaped portfolio project, not a drop
 - Add container image scanning, dependency scanning, SBOM generation, and signed images.
 - Add network policies, ingress TLS, WAF/API gateway controls, and environment-specific CORS.
 - Add load, concurrency, and chaos testing for approval flows, rate limits, and ledger updates.
+- Replace local knowledge compilation with an approved asynchronous extraction service, domain evaluation sets, expert review SLAs, and source-repository ACL synchronization.
+- Replace Secure Context password step-up with corporate OIDC/MFA, managed encryption keys, rotation, retention enforcement, and role-separated reveal/revoke permissions.
 
 ## Intentional Scope
 

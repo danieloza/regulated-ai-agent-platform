@@ -9,7 +9,7 @@ import os
 import re
 import time
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Literal
 from uuid import uuid4
@@ -27,6 +27,17 @@ from app.services.infra import enforce_distributed_rate_limit, redis_status
 from app.services.evidence import render_evidence_markdown, render_evidence_pdf
 from app.services.governance_registry import REGISTRY_SHEETS, parse_registry_workbook
 from app.services.enterprise_api import EnterprisePrincipal, require_role
+from app.services.knowledge import (
+    compile_claims,
+    contains_secret,
+    context_security_mode,
+    decrypt_context,
+    encrypt_context,
+    find_contradictions,
+    issue_context_token,
+    verify_context_password,
+    verify_context_token,
+)
 from app.services.workflow import WORKFLOW_NODES, run_workflow_trace
 
 
@@ -241,9 +252,95 @@ class EnterpriseOutboxEvent(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC), index=True)
 
 
+class KnowledgeSource(Base):
+    __tablename__ = "knowledge_sources"
+
+    id: Mapped[str] = mapped_column(String(48), primary_key=True)
+    title: Mapped[str] = mapped_column(String(240), index=True)
+    content: Mapped[str] = mapped_column(Text)
+    classification: Mapped[str] = mapped_column(String(40), default="internal", index=True)
+    owner: Mapped[str] = mapped_column(String(120), index=True)
+    status: Mapped[str] = mapped_column(String(40), default="under_review", index=True)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    content_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    source_type: Mapped[str] = mapped_column(String(40), default="policy")
+    review_due: Mapped[datetime] = mapped_column(DateTime, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC), index=True)
+
+
+class KnowledgeClaim(Base):
+    __tablename__ = "knowledge_claims"
+
+    id: Mapped[str] = mapped_column(String(48), primary_key=True)
+    source_id: Mapped[str] = mapped_column(String(48), index=True)
+    statement: Mapped[str] = mapped_column(Text)
+    normalized: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(40), default="published", index=True)
+    risk: Mapped[str] = mapped_column(String(20), default="medium", index=True)
+    confidence: Mapped[float] = mapped_column(Float, default=0.9)
+    owner: Mapped[str] = mapped_column(String(120), index=True)
+    source_excerpt: Mapped[str] = mapped_column(Text)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    effective_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
+    review_due: Mapped[datetime] = mapped_column(DateTime, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
+
+
+class KnowledgeChange(Base):
+    __tablename__ = "knowledge_changes"
+
+    id: Mapped[str] = mapped_column(String(48), primary_key=True)
+    source_id: Mapped[str] = mapped_column(String(48), index=True)
+    status: Mapped[str] = mapped_column(String(40), default="pending_review", index=True)
+    risk: Mapped[str] = mapped_column(String(20), default="medium", index=True)
+    summary: Mapped[str] = mapped_column(Text)
+    proposed_claims_json: Mapped[list] = mapped_column(JSON, default=list)
+    contradictions_json: Mapped[list] = mapped_column(JSON, default=list)
+    affected_runs: Mapped[int] = mapped_column(Integer, default=0)
+    decided_by: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    decision_comment: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC), index=True)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class KnowledgeRelease(Base):
+    __tablename__ = "knowledge_releases"
+
+    id: Mapped[str] = mapped_column(String(48), primary_key=True)
+    version: Mapped[str] = mapped_column(String(80), unique=True, index=True)
+    status: Mapped[str] = mapped_column(String(40), default="published", index=True)
+    source_id: Mapped[str] = mapped_column(String(48), index=True)
+    change_id: Mapped[str] = mapped_column(String(48), index=True)
+    claims_added: Mapped[int] = mapped_column(Integer, default=0)
+    contradictions_resolved: Mapped[int] = mapped_column(Integer, default=0)
+    approved_by: Mapped[str] = mapped_column(String(120))
+    integrity_digest: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC), index=True)
+
+
+class SecureContext(Base):
+    __tablename__ = "secure_contexts"
+
+    id: Mapped[str] = mapped_column(String(48), primary_key=True)
+    encrypted_content: Mapped[str] = mapped_column(Text)
+    content_digest: Mapped[str] = mapped_column(String(64))
+    purpose: Mapped[str] = mapped_column(String(160))
+    scope: Mapped[str] = mapped_column(String(40), default="current_run", index=True)
+    classification: Mapped[str] = mapped_column(String(40), default="confidential")
+    owner: Mapped[str] = mapped_column(String(120), index=True)
+    status: Mapped[str] = mapped_column(String(40), default="active", index=True)
+    model_access: Mapped[int] = mapped_column(Integer, default=1)
+    run_id: Mapped[str | None] = mapped_column(String(48), nullable=True, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC), index=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
 class QueryRequest(BaseModel):
     question: str = Field(min_length=3, max_length=1200)
     user_id: str = "operator.demo"
+    secure_context_id: str | None = None
 
 
 class ToolRequest(BaseModel):
@@ -321,6 +418,49 @@ class EnterpriseControlTransitionRequest(BaseModel):
 class EnterpriseDataSubjectTransitionRequest(BaseModel):
     action: Literal["export_data", "correct_data", "restrict_processing", "delete_data", "generate_proof"]
     notes: str = Field(default="", max_length=500)
+
+
+class EnterpriseKnowledgeDecisionRequest(BaseModel):
+    decision: Literal["approved", "rejected", "changes_requested"]
+    comment: str = Field(default="", max_length=1000)
+
+
+class KnowledgeSourceRequest(BaseModel):
+    title: str = Field(min_length=3, max_length=240)
+    content: str = Field(min_length=30, max_length=50000)
+    classification: Literal["public", "internal", "confidential", "restricted"] = "internal"
+    owner: str = Field(default="Knowledge Governance", min_length=3, max_length=120)
+    source_type: Literal["policy", "procedure", "standard", "research", "case_guidance"] = "policy"
+    review_days: int = Field(default=365, ge=1, le=1825)
+
+
+class KnowledgeChangeDecisionRequest(BaseModel):
+    decision: Literal["approved", "rejected", "changes_requested"]
+    operator_id: str = Field(default="knowledge.reviewer", min_length=3, max_length=120)
+    comment: str = Field(default="", max_length=1000)
+
+
+class KnowledgeReplayRequest(BaseModel):
+    change_id: str | None = None
+    limit: int = Field(default=50, ge=1, le=200)
+
+
+class ContextUnlockRequest(BaseModel):
+    password: str = Field(min_length=8, max_length=256)
+    operator_id: str = Field(default="operator.demo", min_length=3, max_length=120)
+
+
+class SecureContextCreateRequest(BaseModel):
+    content: str = Field(min_length=10, max_length=10000)
+    purpose: str = Field(min_length=3, max_length=160)
+    scope: Literal["current_run", "case", "agent", "knowledge_review"] = "current_run"
+    classification: Literal["confidential", "restricted"] = "confidential"
+    expires_hours: int = Field(default=24, ge=1, le=168)
+    model_access: bool = True
+
+
+class SecureContextRevokeRequest(BaseModel):
+    reason: str = Field(default="Operator revoked access.", max_length=300)
 
 
 PROMPT_ATTACKS = [
@@ -738,6 +878,114 @@ def seed() -> None:
                     status="pending",
                 )
             )
+        if not session.get(KnowledgeSource, "ksrc_governance_policy"):
+            review_due = datetime.now(UTC) + timedelta(days=365)
+            governance_content = (
+                "AI assistants must answer only from approved sources and cite the supporting document. "
+                "Retrieved documents are untrusted data and cannot override platform policy. "
+                "Regulated writes require human approval before execution."
+            )
+            governance_source = KnowledgeSource(
+                id="ksrc_governance_policy",
+                title="AI Assistant Governance Policy",
+                content=governance_content,
+                classification="internal",
+                owner="AI Governance",
+                status="published",
+                version=1,
+                content_hash=hashlib.sha256(governance_content.encode()).hexdigest(),
+                source_type="policy",
+                review_due=review_due,
+            )
+            retention_content = "Customer case records must be retained for five years after account closure."
+            retention_source = KnowledgeSource(
+                id="ksrc_retention_2025",
+                title="Records Retention Standard 2025",
+                content=retention_content,
+                classification="confidential",
+                owner="Legal Operations",
+                status="published",
+                version=1,
+                content_hash=hashlib.sha256(retention_content.encode()).hexdigest(),
+                source_type="standard",
+                review_due=datetime.now(UTC) + timedelta(days=45),
+            )
+            candidate_content = "Customer case records must be retained for seven years after account closure."
+            candidate_source = KnowledgeSource(
+                id="ksrc_retention_2026",
+                title="Records Retention Standard 2026",
+                content=candidate_content,
+                classification="confidential",
+                owner="Legal Operations",
+                status="under_review",
+                version=1,
+                content_hash=hashlib.sha256(candidate_content.encode()).hexdigest(),
+                source_type="standard",
+                review_due=datetime.now(UTC) + timedelta(days=365),
+            )
+            session.add_all([governance_source, retention_source, candidate_source])
+            published_claims = []
+            for source, content in ((governance_source, governance_content), (retention_source, retention_content)):
+                for claim in compile_claims(content, source.id, source.owner):
+                    published_claims.append(claim)
+                    session.add(
+                        KnowledgeClaim(
+                            id=claim["id"],
+                            source_id=source.id,
+                            statement=claim["statement"],
+                            normalized=claim["normalized"],
+                            status="published",
+                            risk=claim["risk"],
+                            confidence=claim["confidence"],
+                            owner=source.owner,
+                            source_excerpt=claim["source_excerpt"],
+                            review_due=source.review_due,
+                        )
+                    )
+            proposed = compile_claims(candidate_content, candidate_source.id, candidate_source.owner)
+            contradictions = find_contradictions(proposed, published_claims)
+            session.add(
+                KnowledgeChange(
+                    id="kchg_retention_2026",
+                    source_id=candidate_source.id,
+                    status="pending_review",
+                    risk="high",
+                    summary="Retention period changes from five to seven years.",
+                    proposed_claims_json=proposed,
+                    contradictions_json=contradictions,
+                    affected_runs=18,
+                )
+            )
+            baseline_digest = hashlib.sha256("knowledge-2026.07.10-01".encode()).hexdigest()
+            session.add(
+                KnowledgeRelease(
+                    id="krel_20260710_01",
+                    version="2026.07.10-01",
+                    status="published",
+                    source_id=governance_source.id,
+                    change_id="baseline",
+                    claims_added=len(published_claims),
+                    contradictions_resolved=0,
+                    approved_by="knowledge.reviewer",
+                    integrity_digest=baseline_digest,
+                )
+            )
+            audit(
+                session,
+                "knowledge_seed",
+                "system",
+                "knowledge_release_published",
+                "approved",
+                "Published baseline governed knowledge release.",
+                {"knowledge_version": "2026.07.10-01", "claims": len(published_claims)},
+            )
+        retention_change = session.get(KnowledgeChange, "kchg_retention_2026")
+        if retention_change and not retention_change.contradictions_json:
+            published_claims = [
+                serialize_knowledge_claim(item)
+                for item in session.scalars(select(KnowledgeClaim).where(KnowledgeClaim.status == "published")).all()
+            ]
+            retention_change.contradictions_json = find_contradictions(retention_change.proposed_claims_json, published_claims)
         session.commit()
         if session.scalar(select(Document.id).limit(1)):
             return
@@ -1365,6 +1613,7 @@ def idempotent_enterprise_mutation(
     operation,
     aggregate_id: str,
     event_type: str,
+    outbox_projection=None,
 ) -> dict:
     if not idempotency_key or not (8 <= len(idempotency_key) <= 120):
         raise HTTPException(status_code=428, detail="Idempotency-Key with 8-120 characters is required.")
@@ -1378,6 +1627,7 @@ def idempotent_enterprise_mutation(
             return {**existing.response_json, "enterprise_meta": {"idempotency_replayed": True, "tenant_id": principal.tenant_id}}
 
     response = operation()
+    outbox_result = outbox_projection(response) if outbox_projection else response
     with SessionLocal() as session:
         session.add(
             EnterpriseIdempotencyRecord(
@@ -1394,7 +1644,7 @@ def idempotent_enterprise_mutation(
                 tenant_id=principal.tenant_id,
                 event_type=event_type,
                 aggregate_id=aggregate_id,
-                payload_json={"actor": principal.subject, "role": principal.role, "result": response},
+                payload_json={"actor": principal.subject, "role": principal.role, "result": outbox_result},
             )
         )
         session.commit()
@@ -1413,8 +1663,8 @@ def enterprise_capabilities(principal: EnterprisePrincipal = Depends(require_rol
         "api_version": "v1",
         "tenant_id": principal.tenant_id,
         "principal": {"subject": principal.subject, "role": principal.role, "key_fingerprint": principal.key_fingerprint},
-        "controls": ["rbac", "tenant-boundary", "idempotency", "pagination", "outbox", "audit-attribution"],
-        "resources": ["control-lifecycles", "data-subject-requests", "audit-events", "outbox-events"],
+        "controls": ["rbac", "tenant-boundary", "idempotency", "pagination", "outbox", "audit-attribution", "knowledge-release-gates"],
+        "resources": ["control-lifecycles", "data-subject-requests", "knowledge-sources", "knowledge-claims", "knowledge-changes", "knowledge-releases", "audit-events", "outbox-events"],
     }
 
 
@@ -1514,6 +1764,137 @@ def enterprise_outbox_events(
         for item in items[offset : offset + limit]
     ]
     return {"data": data, "pagination": {"limit": limit, "offset": offset, "total": len(items)}, "tenant_id": principal.tenant_id}
+
+
+@app.get("/api/v1/knowledge/overview", tags=["Enterprise Knowledge"])
+def enterprise_knowledge_overview(principal: EnterprisePrincipal = Depends(require_role("viewer"))) -> dict:
+    ensure_enterprise_resource_tenant(principal)
+    with SessionLocal() as session:
+        payload = build_knowledge_overview(session)
+    return {
+        "generated_at": payload["generated_at"],
+        "metrics": payload["metrics"],
+        "controls": payload["controls"],
+        "pipeline": payload["pipeline"],
+        "action_queue": payload["action_queue"],
+        "compiler": payload["compiler"],
+        "tenant_id": principal.tenant_id,
+    }
+
+
+def enterprise_knowledge_collection(kind: str, limit: int, offset: int, principal: EnterprisePrincipal) -> dict:
+    ensure_enterprise_resource_tenant(principal)
+    with SessionLocal() as session:
+        if kind == "sources":
+            items = session.scalars(select(KnowledgeSource).order_by(KnowledgeSource.created_at.desc())).all()
+            data = [serialize_knowledge_source(item) for item in items]
+        elif kind == "claims":
+            items = session.scalars(select(KnowledgeClaim).order_by(KnowledgeClaim.updated_at.desc())).all()
+            data = [serialize_knowledge_claim(item) for item in items]
+        elif kind == "changes":
+            items = session.scalars(select(KnowledgeChange).order_by(KnowledgeChange.created_at.desc())).all()
+            data = [serialize_knowledge_change(item) for item in items]
+        else:
+            items = session.scalars(select(KnowledgeRelease).order_by(KnowledgeRelease.created_at.desc())).all()
+            data = [serialize_knowledge_release(item) for item in items]
+    return {"data": data[offset : offset + limit], "pagination": {"limit": limit, "offset": offset, "total": len(data)}, "tenant_id": principal.tenant_id}
+
+
+@app.get("/api/v1/knowledge/sources", tags=["Enterprise Knowledge"])
+def enterprise_knowledge_sources(limit: int = Query(default=50, ge=1, le=200), offset: int = Query(default=0, ge=0), principal: EnterprisePrincipal = Depends(require_role("viewer"))) -> dict:
+    return enterprise_knowledge_collection("sources", limit, offset, principal)
+
+
+@app.get("/api/v1/knowledge/claims", tags=["Enterprise Knowledge"])
+def enterprise_knowledge_claims(limit: int = Query(default=50, ge=1, le=200), offset: int = Query(default=0, ge=0), principal: EnterprisePrincipal = Depends(require_role("viewer"))) -> dict:
+    return enterprise_knowledge_collection("claims", limit, offset, principal)
+
+
+@app.get("/api/v1/knowledge/changes", tags=["Enterprise Knowledge"])
+def enterprise_knowledge_changes(limit: int = Query(default=50, ge=1, le=200), offset: int = Query(default=0, ge=0), principal: EnterprisePrincipal = Depends(require_role("viewer"))) -> dict:
+    return enterprise_knowledge_collection("changes", limit, offset, principal)
+
+
+@app.get("/api/v1/knowledge/releases", tags=["Enterprise Knowledge"])
+def enterprise_knowledge_releases(limit: int = Query(default=50, ge=1, le=200), offset: int = Query(default=0, ge=0), principal: EnterprisePrincipal = Depends(require_role("viewer"))) -> dict:
+    return enterprise_knowledge_collection("releases", limit, offset, principal)
+
+
+@app.post("/api/v1/knowledge/sources", tags=["Enterprise Knowledge"])
+def enterprise_ingest_knowledge_source(
+    request: KnowledgeSourceRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    principal: EnterprisePrincipal = Depends(require_role("operator")),
+) -> dict:
+    ensure_enterprise_resource_tenant(principal)
+    body = request.model_dump()
+    content_hash = hashlib.sha256(request.content.encode("utf-8")).hexdigest()
+    return idempotent_enterprise_mutation(
+        principal,
+        "/api/v1/knowledge/sources",
+        idempotency_key,
+        body,
+        lambda: ingest_knowledge_source(request),
+        f"source-hash:{content_hash[:16]}",
+        "enterprise.knowledge.source.ingested",
+        lambda result: {
+            "source_id": result["source"]["id"],
+            "change_id": result["change"]["id"],
+            "classification": result["source"]["classification"],
+            "status": result["source"]["status"],
+            "content_hash": result["source"]["content_hash"],
+        },
+    )
+
+
+@app.post("/api/v1/knowledge/replays", tags=["Enterprise Knowledge"])
+def enterprise_replay_knowledge(
+    request: KnowledgeReplayRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    principal: EnterprisePrincipal = Depends(require_role("operator")),
+) -> dict:
+    ensure_enterprise_resource_tenant(principal)
+    body = request.model_dump()
+    aggregate_id = request.change_id or "latest-pending-change"
+    return idempotent_enterprise_mutation(
+        principal,
+        "/api/v1/knowledge/replays",
+        idempotency_key,
+        body,
+        lambda: replay_knowledge_change(request),
+        aggregate_id,
+        "enterprise.knowledge.replay.completed",
+        lambda result: {"change_id": result["change_id"], "summary": result["summary"]},
+    )
+
+
+@app.post("/api/v1/knowledge/changes/{change_id}/decisions", tags=["Enterprise Knowledge"])
+def enterprise_decide_knowledge_change(
+    change_id: str,
+    request: EnterpriseKnowledgeDecisionRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    principal: EnterprisePrincipal = Depends(require_role("approver")),
+) -> dict:
+    ensure_enterprise_resource_tenant(principal)
+    body = request.model_dump()
+    return idempotent_enterprise_mutation(
+        principal,
+        f"/api/v1/knowledge/changes/{change_id}/decisions",
+        idempotency_key,
+        body,
+        lambda: decide_knowledge_change(
+            change_id,
+            KnowledgeChangeDecisionRequest(decision=request.decision, operator_id=principal.subject, comment=request.comment),
+        ),
+        change_id,
+        "enterprise.knowledge.change.decided",
+        lambda result: {
+            "change_id": result["change"]["id"],
+            "decision": result["change"]["status"],
+            "source_id": result["source"]["id"],
+            "release_version": result["release"]["version"] if result["release"] else None,
+        },
+    )
 
 
 def serialize_governance_record(record: GovernanceRecord) -> dict:
@@ -1705,9 +2086,513 @@ def apply_governance_import(import_id: str, request: GovernanceApplyRequest) -> 
         return serialize_governance_import(item, include_rows=True)
 
 
-def run_assistant_workflow(question: str, user_id: str, run_prefix: str = "run") -> dict:
+def _aware(value: datetime) -> datetime:
+    return value if value.tzinfo else value.replace(tzinfo=UTC)
+
+
+def serialize_knowledge_source(item: KnowledgeSource, include_content: bool = False) -> dict:
+    payload = {
+        "id": item.id,
+        "title": item.title,
+        "classification": item.classification,
+        "owner": item.owner,
+        "status": item.status,
+        "version": item.version,
+        "content_hash": item.content_hash,
+        "source_type": item.source_type,
+        "review_due": item.review_due.isoformat(),
+        "created_at": item.created_at.isoformat(),
+        "immutable": True,
+        "content_excerpt": redact_pii(item.content[:180]),
+    }
+    if include_content:
+        payload["content"] = redact_pii(item.content)
+    return payload
+
+
+def serialize_knowledge_claim(item: KnowledgeClaim) -> dict:
+    return {
+        "id": item.id,
+        "source_id": item.source_id,
+        "statement": redact_pii(item.statement),
+        "status": item.status,
+        "risk": item.risk,
+        "confidence": item.confidence,
+        "owner": item.owner,
+        "version": item.version,
+        "source_excerpt": redact_pii(item.source_excerpt),
+        "effective_at": item.effective_at.isoformat(),
+        "review_due": item.review_due.isoformat(),
+        "updated_at": item.updated_at.isoformat(),
+    }
+
+
+def serialize_knowledge_change(item: KnowledgeChange) -> dict:
+    return {
+        "id": item.id,
+        "source_id": item.source_id,
+        "status": item.status,
+        "risk": item.risk,
+        "summary": item.summary,
+        "proposed_claims": redact_value(item.proposed_claims_json),
+        "contradictions": redact_value(item.contradictions_json),
+        "affected_runs": item.affected_runs,
+        "decided_by": item.decided_by,
+        "decision_comment": redact_pii(item.decision_comment),
+        "created_at": item.created_at.isoformat(),
+        "decided_at": item.decided_at.isoformat() if item.decided_at else None,
+    }
+
+
+def serialize_knowledge_release(item: KnowledgeRelease) -> dict:
+    return {
+        "id": item.id,
+        "version": item.version,
+        "status": item.status,
+        "source_id": item.source_id,
+        "change_id": item.change_id,
+        "claims_added": item.claims_added,
+        "contradictions_resolved": item.contradictions_resolved,
+        "approved_by": item.approved_by,
+        "integrity_digest": item.integrity_digest,
+        "created_at": item.created_at.isoformat(),
+    }
+
+
+def serialize_secure_context(item: SecureContext) -> dict:
+    expired = _aware(item.expires_at) <= datetime.now(UTC)
+    status = "expired" if expired and item.status == "active" else item.status
+    return {
+        "id": item.id,
+        "purpose": item.purpose,
+        "scope": item.scope,
+        "classification": item.classification,
+        "owner": item.owner,
+        "status": status,
+        "model_access": bool(item.model_access),
+        "run_id": item.run_id,
+        "content_digest": item.content_digest,
+        "created_at": item.created_at.isoformat(),
+        "expires_at": item.expires_at.isoformat(),
+        "revoked_at": item.revoked_at.isoformat() if item.revoked_at else None,
+        "content": "[PROTECTED]",
+    }
+
+
+def build_knowledge_overview(session: Session) -> dict:
+    now = datetime.now(UTC)
+    sources = session.scalars(select(KnowledgeSource).order_by(KnowledgeSource.created_at.desc())).all()
+    claims = session.scalars(select(KnowledgeClaim).order_by(KnowledgeClaim.updated_at.desc())).all()
+    changes = session.scalars(select(KnowledgeChange).order_by(KnowledgeChange.created_at.desc())).all()
+    releases = session.scalars(select(KnowledgeRelease).order_by(KnowledgeRelease.created_at.desc())).all()
+    published = [claim for claim in claims if claim.status == "published"]
+    current_sources = [source for source in sources if _aware(source.review_due) >= now]
+    pending = [change for change in changes if change.status in {"pending_review", "changes_requested"}]
+    contradictions = [item for change in pending for item in change.contradictions_json]
+    provenance = round(100 * sum(bool(claim.source_id and claim.source_excerpt) for claim in published) / max(len(published), 1))
+    freshness = round(100 * len(current_sources) / max(len(sources), 1))
+    review_coverage = round(100 * (len(changes) - len(pending)) / max(len(changes), 1))
+    contradiction_score = max(0, 100 - len(contradictions) * 12)
+    health = round(provenance * 0.3 + freshness * 0.25 + review_coverage * 0.2 + contradiction_score * 0.25)
+    action_queue = []
+    for change in pending:
+        action_queue.append(
+            {
+                "id": change.id,
+                "type": "contradiction" if change.contradictions_json else "change_review",
+                "severity": change.risk,
+                "title": change.summary,
+                "detail": f"{len(change.contradictions_json)} contradictions · {change.affected_runs} historical runs affected",
+                "owner": session.get(KnowledgeSource, change.source_id).owner if session.get(KnowledgeSource, change.source_id) else "Unassigned",
+                "action": "Review knowledge diff",
+            }
+        )
+    for source in sources:
+        days = (_aware(source.review_due) - now).days
+        if 0 <= days <= 60:
+            action_queue.append(
+                {
+                    "id": source.id,
+                    "type": "freshness",
+                    "severity": "medium" if days > 14 else "high",
+                    "title": f"{source.title} review is due",
+                    "detail": f"Freshness review due in {days} days",
+                    "owner": source.owner,
+                    "action": "Open source",
+                }
+            )
+    latest_release = releases[0] if releases else None
+    return {
+        "generated_at": now.isoformat(),
+        "compiler": {
+            "mode": "deterministic_local",
+            "production_adapter": "approved LLM extractor behind the same review contract",
+            "raw_sources": "immutable",
+            "publication_gate": "human approval",
+        },
+        "metrics": {
+            "health": health,
+            "sources": len(sources),
+            "published_claims": len(published),
+            "pending_reviews": len(pending),
+            "contradictions": len(contradictions),
+            "affected_runs": sum(change.affected_runs for change in pending),
+            "current_release": latest_release.version if latest_release else "unpublished",
+        },
+        "controls": {
+            "provenance": provenance,
+            "freshness": freshness,
+            "review_coverage": review_coverage,
+            "contradiction_control": contradiction_score,
+        },
+        "pipeline": {
+            "ingested": len(sources),
+            "under_review": sum(source.status == "under_review" for source in sources),
+            "quarantined": sum(source.status == "quarantined" for source in sources),
+            "published": sum(source.status == "published" for source in sources),
+            "retired": sum(source.status == "retired" for source in sources),
+        },
+        "action_queue": sorted(action_queue, key=lambda item: item["severity"] != "high"),
+        "sources": [serialize_knowledge_source(item) for item in sources],
+        "claims": [serialize_knowledge_claim(item) for item in claims],
+        "changes": [serialize_knowledge_change(item) for item in changes],
+        "releases": [serialize_knowledge_release(item) for item in releases],
+    }
+
+
+@app.get("/api/knowledge/overview", tags=["Knowledge Governance"])
+def knowledge_overview() -> dict:
+    with SessionLocal() as session:
+        return build_knowledge_overview(session)
+
+
+@app.post("/api/knowledge/sources", tags=["Knowledge Governance"])
+def ingest_knowledge_source(request: KnowledgeSourceRequest) -> dict:
+    content_hash = hashlib.sha256(request.content.encode("utf-8")).hexdigest()
+    source_id = f"ksrc_{uuid4().hex[:12]}"
+    change_id = f"kchg_{uuid4().hex[:12]}"
+    with SessionLocal() as session:
+        if session.scalar(select(KnowledgeSource).where(KnowledgeSource.content_hash == content_hash)):
+            raise HTTPException(status_code=409, detail="This immutable source content is already registered.")
+        policy = classify_policy(request.content)
+        quarantined = policy["decision"] == "denied" or contains_secret(request.content)
+        source = KnowledgeSource(
+            id=source_id,
+            title=request.title,
+            content=request.content,
+            classification=request.classification,
+            owner=request.owner,
+            status="quarantined" if quarantined else "under_review",
+            content_hash=content_hash,
+            source_type=request.source_type,
+            review_due=datetime.now(UTC) + timedelta(days=request.review_days),
+        )
+        proposed = [] if quarantined else compile_claims(request.content, source_id, request.owner)
+        current_claims = [serialize_knowledge_claim(item) for item in session.scalars(select(KnowledgeClaim).where(KnowledgeClaim.status == "published")).all()]
+        contradictions = find_contradictions(proposed, current_claims)
+        question_events = session.scalars(select(AuditEvent).where(AuditEvent.event_type == "classify_request")).all()
+        claim_tokens = set(tokenize(" ".join(item["statement"] for item in proposed)))
+        affected_runs = sum(bool(claim_tokens & set(tokenize(event.metadata_json.get("question", "")))) for event in question_events)
+        change = KnowledgeChange(
+            id=change_id,
+            source_id=source_id,
+            status="quarantined" if quarantined else "pending_review",
+            risk="high" if quarantined or contradictions else "medium",
+            summary=(
+                "Source quarantined after injection or secret scan."
+                if quarantined
+                else f"Compiled {len(proposed)} candidate claims from {request.title}."
+            ),
+            proposed_claims_json=proposed,
+            contradictions_json=contradictions,
+            affected_runs=affected_runs,
+        )
+        session.add_all([source, change])
+        audit(
+            session,
+            change_id,
+            request.owner,
+            "knowledge_source_ingested",
+            "denied" if quarantined else "approval_required",
+            change.summary,
+            {"source_id": source_id, "classification": request.classification, "content_hash": content_hash, "claims": len(proposed)},
+        )
+        session.commit()
+        return {"source": serialize_knowledge_source(source), "change": serialize_knowledge_change(change)}
+
+
+@app.post("/api/knowledge/replay", tags=["Knowledge Governance"])
+def replay_knowledge_change(request: KnowledgeReplayRequest) -> dict:
+    with SessionLocal() as session:
+        change = session.get(KnowledgeChange, request.change_id) if request.change_id else session.scalar(
+            select(KnowledgeChange).where(KnowledgeChange.status == "pending_review").order_by(KnowledgeChange.created_at.desc())
+        )
+        if not change:
+            raise HTTPException(status_code=404, detail="No reviewable knowledge change found.")
+        claim_tokens = set(tokenize(" ".join(item["statement"] for item in change.proposed_claims_json)))
+        events = session.scalars(
+            select(AuditEvent).where(AuditEvent.event_type == "classify_request").order_by(AuditEvent.created_at.desc()).limit(request.limit)
+        ).all()
+        results = []
+        for event in events:
+            question = event.metadata_json.get("question", "")
+            overlap = sorted(claim_tokens & set(tokenize(question)))
+            if overlap:
+                results.append(
+                    {
+                        "run_id": event.run_id,
+                        "question": question,
+                        "current_decision": event.decision,
+                        "candidate_effect": "answer_requires_regeneration",
+                        "matched_terms": overlap[:8],
+                        "risk": change.risk,
+                    }
+                )
+        change.affected_runs = len(results)
+        audit(
+            session,
+            change.id,
+            "knowledge.reviewer",
+            "knowledge_replay_completed",
+            "allowed",
+            f"Replayed candidate knowledge against {len(events)} historical runs.",
+            {"change_id": change.id, "affected_runs": len(results), "total_runs": len(events)},
+        )
+        session.commit()
+        return {
+            "change_id": change.id,
+            "summary": {"total": len(events), "affected": len(results), "unchanged": len(events) - len(results), "contradictions": len(change.contradictions_json)},
+            "results": results,
+        }
+
+
+@app.post("/api/knowledge/changes/{change_id}/decision", tags=["Knowledge Governance"])
+def decide_knowledge_change(change_id: str, request: KnowledgeChangeDecisionRequest) -> dict:
+    with SessionLocal() as session:
+        change = session.get(KnowledgeChange, change_id)
+        if not change:
+            raise HTTPException(status_code=404, detail="Knowledge change not found.")
+        if change.status not in {"pending_review", "changes_requested"}:
+            raise HTTPException(status_code=409, detail="Knowledge change is not awaiting a decision.")
+        if request.decision == "approved" and change.risk == "high" and len(request.comment.strip()) < 10:
+            raise HTTPException(status_code=422, detail="High-risk knowledge changes require a substantive approval comment.")
+        source = session.get(KnowledgeSource, change.source_id)
+        change.status = request.decision
+        change.decided_by = request.operator_id
+        change.decision_comment = request.comment
+        change.decided_at = datetime.now(UTC)
+        release = None
+        if request.decision == "approved":
+            for contradiction in change.contradictions_json:
+                current = session.get(KnowledgeClaim, contradiction["published_claim_id"])
+                if current:
+                    current.status = "superseded"
+                    current.updated_at = datetime.now(UTC)
+            added = 0
+            for claim in change.proposed_claims_json:
+                if not session.get(KnowledgeClaim, claim["id"]):
+                    session.add(
+                        KnowledgeClaim(
+                            id=claim["id"],
+                            source_id=source.id,
+                            statement=claim["statement"],
+                            normalized=claim["normalized"],
+                            status="published",
+                            risk=claim["risk"],
+                            confidence=claim["confidence"],
+                            owner=source.owner,
+                            source_excerpt=claim["source_excerpt"],
+                            review_due=source.review_due,
+                        )
+                    )
+                    added += 1
+            source.status = "published"
+            source.version += 1
+            document = Document(title=f"{source.title} · governed v{source.version}", content=source.content, risk_label="clean")
+            session.add(document)
+            session.flush()
+            for chunk in chunk_text(source.content):
+                session.add(Chunk(document_id=document.id, title=document.title, content=chunk, token_count=len(chunk.split()), embedding=embed(chunk)))
+            release_count = session.query(KnowledgeRelease).count() + 1
+            date_version = datetime.now(UTC).date().isoformat().replace("-", ".")
+            version = f"{date_version}-{release_count:02d}"
+            canonical = json.dumps({"change": change.id, "source_hash": source.content_hash, "claims": change.proposed_claims_json}, sort_keys=True)
+            release = KnowledgeRelease(
+                id=f"krel_{uuid4().hex[:12]}",
+                version=version,
+                status="published",
+                source_id=source.id,
+                change_id=change.id,
+                claims_added=added,
+                contradictions_resolved=len(change.contradictions_json),
+                approved_by=request.operator_id,
+                integrity_digest=hashlib.sha256(canonical.encode()).hexdigest(),
+            )
+            session.add(release)
+        elif request.decision == "rejected":
+            source.status = "rejected"
+        else:
+            source.status = "under_review"
+        audit(
+            session,
+            change.id,
+            request.operator_id,
+            "knowledge_change_decision",
+            request.decision,
+            f"Knowledge change marked {request.decision}.",
+            {"change_id": change.id, "source_id": source.id, "comment": redact_pii(request.comment), "release": release.version if release else None},
+        )
+        session.commit()
+        return {"change": serialize_knowledge_change(change), "source": serialize_knowledge_source(source), "release": serialize_knowledge_release(release) if release else None}
+
+
+def require_secure_context_subject(token: str | None) -> str:
+    subject = verify_context_token(token)
+    if not subject:
+        raise HTTPException(status_code=401, detail="Secure context session is missing, invalid, or expired.")
+    return subject
+
+
+@app.get("/api/knowledge/secure-context", tags=["Secure Context"])
+def secure_context_status() -> dict:
+    with SessionLocal() as session:
+        items = session.scalars(select(SecureContext).order_by(SecureContext.created_at.desc()).limit(12)).all()
+        return {
+            "security_mode": context_security_mode(),
+            "unlock_ttl_seconds": 600,
+            "default_scope": "current_run",
+            "contexts": [serialize_secure_context(item) for item in items],
+        }
+
+
+@app.post("/api/knowledge/secure-context/unlock", tags=["Secure Context"])
+def unlock_secure_context(request: ContextUnlockRequest) -> dict:
+    with SessionLocal() as session:
+        if not verify_context_password(request.password):
+            audit(session, "secure_context_unlock", request.operator_id, "secure_context_unlock", "denied", "Secure context step-up authentication failed.")
+            session.commit()
+            raise HTTPException(status_code=401, detail="Step-up authentication failed.")
+        token, expires_at = issue_context_token(request.operator_id)
+        audit(session, "secure_context_unlock", request.operator_id, "secure_context_unlock", "allowed", "Secure context session unlocked.", {"expires_at": expires_at.isoformat(), "security_mode": context_security_mode()})
+        session.commit()
+        return {"access_token": token, "token_type": "secure-context", "expires_at": expires_at.isoformat(), "operator_id": request.operator_id, "security_mode": context_security_mode()}
+
+
+@app.post("/api/knowledge/secure-context", tags=["Secure Context"])
+def create_secure_context(request: SecureContextCreateRequest, x_secure_context_token: str | None = Header(default=None)) -> dict:
+    subject = require_secure_context_subject(x_secure_context_token)
+    if contains_secret(request.content):
+        with SessionLocal() as session:
+            audit(session, "secure_context_rejected", subject, "secure_context_create", "denied", "Protected context rejected because credentials or secrets must use the enterprise vault.", {"purpose": request.purpose, "scope": request.scope, "classification": request.classification})
+            session.commit()
+        raise HTTPException(status_code=422, detail="Credentials and secrets must be referenced from an enterprise vault, not stored as protected context.")
+    policy = classify_policy(request.content)
+    if policy["decision"] == "denied":
+        with SessionLocal() as session:
+            audit(session, "secure_context_rejected", subject, "secure_context_create", "denied", "Protected context rejected by prompt-injection and exfiltration controls.", {"purpose": request.purpose, "scope": request.scope, "classification": request.classification, "matches": policy["matches"]})
+            session.commit()
+        raise HTTPException(status_code=422, detail="Protected context failed the prompt-injection and exfiltration scan.")
+    context_id = f"ctx_{uuid4().hex[:12]}"
+    digest = hashlib.sha256(request.content.encode("utf-8")).hexdigest()
+    with SessionLocal() as session:
+        item = SecureContext(
+            id=context_id,
+            encrypted_content=encrypt_context(request.content),
+            content_digest=digest,
+            purpose=request.purpose,
+            scope=request.scope,
+            classification=request.classification,
+            owner=subject,
+            model_access=1 if request.model_access else 0,
+            expires_at=datetime.now(UTC) + timedelta(hours=request.expires_hours),
+        )
+        session.add(item)
+        audit(
+            session,
+            context_id,
+            subject,
+            "secure_context_created",
+            "allowed",
+            "Encrypted protected context created.",
+            {"context_id": context_id, "purpose": request.purpose, "scope": request.scope, "classification": request.classification, "digest": digest, "expires_at": item.expires_at.isoformat()},
+        )
+        session.commit()
+        return serialize_secure_context(item)
+
+
+@app.get("/api/knowledge/secure-context/{context_id}/reveal", tags=["Secure Context"])
+def reveal_secure_context(context_id: str, x_secure_context_token: str | None = Header(default=None)) -> dict:
+    subject = require_secure_context_subject(x_secure_context_token)
+    with SessionLocal() as session:
+        item = session.get(SecureContext, context_id)
+        if not item:
+            raise HTTPException(status_code=404, detail="Protected context not found.")
+        if item.owner != subject:
+            raise HTTPException(status_code=403, detail="Protected context belongs to another operator session.")
+        if item.status != "active" or _aware(item.expires_at) <= datetime.now(UTC):
+            raise HTTPException(status_code=410, detail="Protected context is revoked or expired.")
+        content = decrypt_context(item.encrypted_content)
+        audit(session, context_id, subject, "secure_context_revealed", "allowed", "Protected context content was revealed to its owner.", {"context_id": context_id, "digest": item.content_digest})
+        session.commit()
+        return {**serialize_secure_context(item), "content": content}
+
+
+@app.post("/api/knowledge/secure-context/{context_id}/revoke", tags=["Secure Context"])
+def revoke_secure_context(context_id: str, request: SecureContextRevokeRequest, x_secure_context_token: str | None = Header(default=None)) -> dict:
+    subject = require_secure_context_subject(x_secure_context_token)
+    with SessionLocal() as session:
+        item = session.get(SecureContext, context_id)
+        if not item:
+            raise HTTPException(status_code=404, detail="Protected context not found.")
+        if item.owner != subject:
+            raise HTTPException(status_code=403, detail="Protected context belongs to another operator session.")
+        item.status = "revoked"
+        item.revoked_at = datetime.now(UTC)
+        audit(session, context_id, subject, "secure_context_revoked", "allowed", "Protected context access revoked.", {"context_id": context_id, "reason": redact_pii(request.reason)})
+        session.commit()
+        return serialize_secure_context(item)
+
+
+def run_assistant_workflow(
+    question: str,
+    user_id: str,
+    run_prefix: str = "run",
+    secure_context_id: str | None = None,
+    secure_context_token: str | None = None,
+) -> dict:
     run_id = f"{run_prefix}_{uuid4().hex[:10]}"
     with SessionLocal() as session:
+        context_item = None
+        protected_context = ""
+        if secure_context_id:
+            subject = require_secure_context_subject(secure_context_token)
+            context_item = session.get(SecureContext, secure_context_id)
+            if not context_item:
+                raise HTTPException(status_code=404, detail="Protected context not found.")
+            if context_item.owner != subject or subject != user_id:
+                raise HTTPException(status_code=403, detail="Protected context is not authorized for this operator.")
+            if context_item.status != "active" or _aware(context_item.expires_at) <= datetime.now(UTC):
+                raise HTTPException(status_code=410, detail="Protected context is revoked or expired.")
+            if context_item.scope == "current_run" and context_item.run_id:
+                raise HTTPException(status_code=409, detail="Current-run protected context has already been consumed.")
+            protected_context = decrypt_context(context_item.encrypted_content) if context_item.model_access else ""
+            context_item.run_id = run_id
+            audit(
+                session,
+                run_id,
+                user_id,
+                "secure_context_applied",
+                "allowed",
+                "Protected context attached without exposing its content to standard logs.",
+                {
+                    "context_id": context_item.id,
+                    "purpose": context_item.purpose,
+                    "scope": context_item.scope,
+                    "classification": context_item.classification,
+                    "digest": context_item.content_digest,
+                    "model_access": bool(context_item.model_access),
+                },
+            )
         policy = classify_policy(question)
         audit(
             session,
@@ -1718,7 +2603,8 @@ def run_assistant_workflow(question: str, user_id: str, run_prefix: str = "run")
             policy["reason"],
             {"matches": policy["matches"], "question": redact_pii(question), "policy_version": POLICY_VERSION},
         )
-        citations = [] if policy["decision"] == "denied" else retrieve(session, question)
+        retrieval_query = f"{question} {protected_context}".strip()
+        citations = [] if policy["decision"] == "denied" else retrieve(session, retrieval_query)
         risk = assess_run_risk(question, policy, citations)
         workflow_trace = run_workflow_trace(policy["decision"], len(citations))
         audit(
@@ -1759,12 +2645,19 @@ def run_assistant_workflow(question: str, user_id: str, run_prefix: str = "run")
             "audit": serialize_events(events),
             "risk": risk,
             "policy_version": POLICY_VERSION,
+            "knowledge_version": session.scalar(select(KnowledgeRelease.version).where(KnowledgeRelease.status == "published").order_by(KnowledgeRelease.created_at.desc())) or "unpublished",
+            "secure_context": serialize_secure_context(context_item) if context_item else None,
         }
 
 
 @app.post("/api/assistant/query")
-def assistant_query(request: QueryRequest) -> dict:
-    return run_assistant_workflow(request.question, request.user_id)
+def assistant_query(request: QueryRequest, x_secure_context_token: str | None = Header(default=None)) -> dict:
+    return run_assistant_workflow(
+        request.question,
+        request.user_id,
+        secure_context_id=request.secure_context_id,
+        secure_context_token=x_secure_context_token,
+    )
 
 
 def build_run_details(session: Session, run_id: str) -> dict:
