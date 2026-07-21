@@ -200,27 +200,29 @@ See [Enterprise Deployment Roadmap](docs/enterprise-deployment-roadmap.md) for t
 
 ![Regulated AI Agent Platform demo](docs/demo.gif)
 
+The guided HR/portfolio presentation moves from the platform overview through source-bound RAG, adversarial testing, scoped tools, lifecycle controls, and governed knowledge intake without executing state-changing actions automatically.
+
 ## Screenshots
 
-### Operator Dashboard
+### Operator Console
 
-![Operator Dashboard](docs/screenshots/01-dashboard.png)
+![Operator Console](docs/screenshots/01-dashboard.png)
 
-### Run Details
+### Governance Lifecycle
 
-![Run Details](docs/screenshots/02-run-details.png)
+![Governance Lifecycle](docs/screenshots/02-governance-lifecycle.png)
 
-### Tool Gateway
+### Control Lifecycle Matrix
 
-![Tool Gateway](docs/screenshots/03-tool-gateway.png)
+![Control Lifecycle Matrix](docs/screenshots/03-control-lifecycle-matrix.png)
 
-### Prompt Injection Lab
+### Knowledge Control Center
 
-![Prompt Injection Lab](docs/screenshots/04-prompt-lab.png)
+![Knowledge Control Center](docs/screenshots/04-knowledge-control-center.png)
 
-### Approvals
+### Policy Replay & Diff
 
-![Approvals](docs/screenshots/05-approvals.png)
+![Policy Replay and Diff](docs/screenshots/05-policy-replay.png)
 
 ## Architecture
 
