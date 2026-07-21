@@ -12,6 +12,7 @@ This project models a regulated AI assistant that can answer from business docum
 - Ledger balances used in the race-condition demo.
 - Immutable knowledge sources, derived claims, contradiction reviews, and published knowledge releases.
 - Encrypted protected context, access tokens, content digests, purpose, scope, and expiration metadata.
+- Obsidian vault paths, Markdown notes, persisted sync previews, connector file lineage, and knowledge-graph relations.
 
 ## Trust Boundaries
 
@@ -25,6 +26,9 @@ This project models a regulated AI assistant that can answer from business docum
 | Multiple replicas to rate limits | Redis | Per-process memory | Shared Redis counters for distributed enforcement |
 | Sources to knowledge compiler | Approved review workflow | Untrusted source text and extraction output | Injection/secret scan, immutable source, diff, replay, approval gate |
 | Protected context to run | Policy and scoped retrieval | Confidential operator-entered context | Step-up token, encryption, owner binding, TTL, single-run scope, metadata-only audit |
+| Obsidian vault to connector | Allowlisted backend scanner | Local paths, Markdown, frontmatter, wiki links | Root allowlist, path containment, symlink rejection, file and vault limits, required tags |
+| Preview to apply | Persisted preview digest | Vault content changing after review | Thirty-minute expiry, full rescan, digest comparison, immutable source registration |
+| Graph to operator | Persisted provenance | Inferred lexical relationships | Explicit authoritative/inferred semantics and accessible adjacency view |
 
 ## Attacker Goals
 
@@ -40,6 +44,9 @@ This project models a regulated AI assistant that can answer from business docum
 - Publish a material knowledge change without expert review or hide its downstream impact.
 - Steal, replay, or misuse protected context or its temporary access token.
 - Place credentials in protected context so they reach a model provider or audit system.
+- Escape the configured vault root, follow a symlink, or exhaust resources with a large Markdown tree.
+- Change a note after preview but before apply to bypass operator review.
+- Treat an inferred graph edge as authoritative provenance or delete published knowledge by deleting its source note.
 
 ## Mitigations
 
@@ -59,6 +66,12 @@ This project models a regulated AI assistant that can answer from business docum
 - Contradicted claims are superseded through a versioned release rather than silently overwritten.
 - Protected context uses scrypt step-up verification, signed short-lived access tokens, encryption at rest, owner binding, expiration, and single-run consumption.
 - Secret-shaped and injection-shaped protected context is rejected; audit events store metadata and digest rather than plaintext.
+- The Obsidian connector is production-disabled without an explicit root allowlist and rejects roots or files that escape through path traversal or symlinks.
+- Connector scans are bounded by file-count, file-size, and total-byte limits; hidden metadata and non-UTF-8 files are excluded.
+- Apply rescans and compares the persisted digest, while expired previews require a new review.
+- Connector deletion creates a tombstone and retention review; connector apply never directly publishes to RAG.
+- Raw note bodies remain server-side and are omitted from preview responses and integration outbox projections.
+- Governance graph edges distinguish persisted lineage from inferred lexical overlap.
 
 ## Residual Risks
 
@@ -69,6 +82,7 @@ This project models a regulated AI assistant that can answer from business docum
 - Prompt-injection detection is regression-tested but not exhaustive. A production system should combine deterministic controls, model evals, red-team cases, monitoring, and incident response.
 - Local claim extraction and contradiction detection are deterministic control-plane examples, not validated legal or clinical reasoning.
 - The local Secure Context credential and application-managed encryption key are not substitutes for corporate MFA, KMS/HSM-backed keys, rotation, or privileged-access monitoring.
+- The local connector scans a filesystem synchronously. Production requires a controlled content replica, inherited source ACLs, durable jobs, malware/DLP controls, and operational ownership.
 
 ## Security Regression Scope
 

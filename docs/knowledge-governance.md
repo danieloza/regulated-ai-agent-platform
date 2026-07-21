@@ -33,6 +33,34 @@ The operator dashboard includes:
 
 The health score is a transparent control aggregate, not a model-generated confidence score.
 
+## Obsidian Vault Connector
+
+Obsidian is an authoring workspace, not the production knowledge authority. The controlled connector scans an explicitly allowlisted Markdown vault, persists a reviewable change set, and only creates immutable sources and approval-gated knowledge changes after an operator applies that exact preview.
+
+The connector workflow is:
+
+```text
+Allowlisted vault scope
+    -> bounded Markdown scan
+    -> persisted Preview Diff
+    -> snapshot integrity recheck
+    -> immutable source registration
+    -> human review queue
+    -> versioned release
+```
+
+The scanner excludes hidden folders including `.obsidian`, symlinks, non-UTF-8 files, oversized notes, and notes that do not match the configured folder and tag scope. In production, scanning is disabled until `OBSIDIAN_ALLOWED_ROOTS` is configured. A preview expires after 30 minutes, and apply fails if the vault digest changed after preview.
+
+Deleting a note does not delete published knowledge. The connector records a tombstone and creates a retention-review action so an authorized reviewer can decide whether the corresponding source and claims should be retired. `Open in Obsidian` uses the official `obsidian://open` URI to return an operator to the original note without copying plaintext into the browser URL.
+
+The included `backend/demo/obsidian-vault` is a local demonstration fixture. A deployed connector should run beside a controlled content replica or managed workspace, not scan arbitrary employee workstations.
+
+## Knowledge Governance Graph
+
+The governance graph traces connector, note, immutable source, candidate change, claim, release, and historical-run relationships. Persisted lineage such as `materialized_as`, `proposed_as`, and `published_as` is authoritative. `lexical_run_overlap` is explicitly marked as inferred and is not presented as proof of causality.
+
+The UI includes both a visual network and an accessible relationship table. The graph helps an operator answer where a claim came from, which change proposed it, which release published it, and which historical runs may need review.
+
 ## Compiler Boundary
 
 The repository uses deterministic local claim extraction to keep tests repeatable and avoid implying that an external model has been configured. The API boundary is designed so a deployment can introduce a governed extraction model without changing the review workflow.
@@ -84,7 +112,10 @@ The local credential is enabled only when both secure-context secrets are absent
 - Publication requires a human decision; ingestion alone never changes production knowledge.
 - A quarantined source cannot create claims or enter retrieval.
 - Historical replay informs approval but does not automatically publish a candidate.
+- Connector apply never publishes directly into RAG.
+- Preview content remains server-side; API responses and integration events expose metadata, hashes, and redacted excerpts rather than raw note bodies.
+- Authoritative graph lineage and inferred analytical relationships remain visibly distinct.
 
 ## Current Boundary
 
-The feature demonstrates the control plane and persistence contracts. It is not a complete enterprise knowledge-management system. Production use requires corporate IAM, source-repository ACL synchronization, PostgreSQL migrations, durable workers, key rotation, retention enforcement, deletion handling, expert ownership, and evaluated domain-specific extraction.
+The feature demonstrates the control plane and persistence contracts. It is not a complete enterprise knowledge-management system. Production use requires corporate IAM, source-repository ACL synchronization, a controlled connector runner, PostgreSQL migrations, durable workers, key rotation, retention enforcement, deletion handling, expert ownership, and evaluated domain-specific extraction.

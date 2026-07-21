@@ -394,6 +394,107 @@ curl -s -X POST http://127.0.0.1:8000/api/knowledge/changes/kchg_retention_2026/
 
 High-risk approvals require a substantive comment. Approval supersedes contradicted claims, indexes the approved source, and returns a release version plus SHA-256 integrity digest.
 
+## Obsidian Vault Connector and Governance Graph
+
+Read connector posture. Production returns `disabled` until an allowlisted root is configured:
+
+```bash
+curl -s http://127.0.0.1:8000/api/knowledge/connectors/obsidian
+```
+
+```json
+{
+  "security_mode": "local_development",
+  "default_config": {
+    "vault_path": "demo/obsidian-vault",
+    "vault_name": "Regulated AI Governance",
+    "include_folders": ["Policies", "Controls"],
+    "required_tags": ["governed-ai"]
+  },
+  "connectors": [],
+  "files": [],
+  "previews": []
+}
+```
+
+Persist a Preview Diff for the allowlisted vault:
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/api/knowledge/connectors/obsidian/previews \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name":"Obsidian Governance Vault",
+    "vault_name":"Regulated AI Governance",
+    "vault_path":"demo/obsidian-vault",
+    "include_folders":["Policies","Controls"],
+    "required_tags":["governed-ai"],
+    "default_owner":"Knowledge Governance",
+    "classification":"internal",
+    "review_days":365,
+    "operator_id":"knowledge.operator"
+  }'
+```
+
+```json
+{
+  "connector": {"id":"kcon_example","status":"configured","vault_ref":"obsidian-vault"},
+  "preview": {
+    "id":"kpreview_example",
+    "status":"staged",
+    "scan_digest":"4da9c79b...",
+    "summary":{"new":3,"modified":0,"deleted":0,"unchanged":0,"skipped":0},
+    "changes":[{
+      "relative_path":"Policies/AI Assistant Governance.md",
+      "title":"AI Assistant Governance",
+      "change_type":"new",
+      "security_status":"reviewable",
+      "obsidian_uri":"obsidian://open?vault=Regulated%20AI%20Governance&file=Policies%2FAI%20Assistant%20Governance.md"
+    }]
+  }
+}
+```
+
+Apply the exact preview to the review queue:
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/api/knowledge/connectors/obsidian/previews/kpreview_example/apply \
+  -H "Content-Type: application/json" \
+  -d '{
+    "operator_id":"knowledge.approver",
+    "comment":"Reviewed vault scope, provenance, and staged changes before controlled intake."
+  }'
+```
+
+```json
+{
+  "preview":{"id":"kpreview_example","status":"applied"},
+  "results":[{
+    "relative_path":"Policies/AI Assistant Governance.md",
+    "action":"created_review_change",
+    "source_id":"ksrc_example",
+    "change_id":"kchg_example"
+  }],
+  "publication":"human_review_required"
+}
+```
+
+The apply call rescans the vault and returns `409` if its digest changed. It creates sources and review changes; it does not publish into RAG. The enterprise equivalents under `/api/v1/knowledge/connectors/obsidian` require tenant authentication, RBAC, and an `Idempotency-Key` for mutations.
+
+Read the lineage graph:
+
+```bash
+curl -s http://127.0.0.1:8000/api/knowledge/graph
+```
+
+```json
+{
+  "nodes":[{"id":"kcon_example","type":"connector","label":"Obsidian Governance Vault","status":"connected"}],
+  "edges":[{"source":"kcon_example","target":"kfile_example","relation":"contains","inferred":false}],
+  "semantics":{"authoritative":["contains","materialized_as","wikilink","compiled_into","proposed_as","published_as","included_in"],"inferred":["lexical_run_overlap"]},
+  "metrics":{"nodes":18,"edges":21}
+}
+```
+
 ## Secure Context Vault
 
 The local workstation credential is documented in [Governed LLM Wiki](knowledge-governance.md). For any shared environment, configure a password hash and master secret or replace this flow with corporate step-up MFA.

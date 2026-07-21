@@ -38,6 +38,11 @@ from app.services.knowledge import (
     verify_context_password,
     verify_context_token,
 )
+from app.services.obsidian_connector import (
+    ObsidianConnectorError,
+    connector_security_mode,
+    scan_obsidian_vault,
+)
 from app.services.workflow import WORKFLOW_NODES, run_workflow_trace
 
 
@@ -319,6 +324,59 @@ class KnowledgeRelease(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC), index=True)
 
 
+class KnowledgeConnector(Base):
+    __tablename__ = "knowledge_connectors"
+
+    id: Mapped[str] = mapped_column(String(48), primary_key=True)
+    kind: Mapped[str] = mapped_column(String(40), default="obsidian", index=True)
+    name: Mapped[str] = mapped_column(String(160))
+    vault_name: Mapped[str] = mapped_column(String(160))
+    vault_path: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(40), default="configured", index=True)
+    include_folders_json: Mapped[list] = mapped_column(JSON, default=list)
+    required_tags_json: Mapped[list] = mapped_column(JSON, default=list)
+    default_owner: Mapped[str] = mapped_column(String(120))
+    classification: Mapped[str] = mapped_column(String(40), default="internal")
+    review_days: Mapped[int] = mapped_column(Integer, default=365)
+    last_scan_digest: Mapped[str] = mapped_column(String(64), default="")
+    last_scan_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_sync_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC), index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
+
+
+class KnowledgeConnectorFile(Base):
+    __tablename__ = "knowledge_connector_files"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    connector_id: Mapped[str] = mapped_column(String(48), index=True)
+    relative_path: Mapped[str] = mapped_column(String(500), index=True)
+    title: Mapped[str] = mapped_column(String(240))
+    content_hash: Mapped[str] = mapped_column(String(64), index=True)
+    source_id: Mapped[str | None] = mapped_column(String(48), nullable=True, index=True)
+    status: Mapped[str] = mapped_column(String(40), default="active", index=True)
+    obsidian_uri: Mapped[str] = mapped_column(Text)
+    metadata_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    links_json: Mapped[list] = mapped_column(JSON, default=list)
+    last_synced_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
+
+
+class KnowledgeSyncPreview(Base):
+    __tablename__ = "knowledge_sync_previews"
+
+    id: Mapped[str] = mapped_column(String(48), primary_key=True)
+    connector_id: Mapped[str] = mapped_column(String(48), index=True)
+    status: Mapped[str] = mapped_column(String(40), default="staged", index=True)
+    scan_digest: Mapped[str] = mapped_column(String(64), index=True)
+    changes_json: Mapped[list] = mapped_column(JSON, default=list)
+    skipped_json: Mapped[list] = mapped_column(JSON, default=list)
+    summary_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_by: Mapped[str] = mapped_column(String(120))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC), index=True)
+    applied_by: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    applied_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
 class SecureContext(Base):
     __tablename__ = "secure_contexts"
 
@@ -443,6 +501,24 @@ class KnowledgeChangeDecisionRequest(BaseModel):
 class KnowledgeReplayRequest(BaseModel):
     change_id: str | None = None
     limit: int = Field(default=50, ge=1, le=200)
+
+
+class ObsidianPreviewRequest(BaseModel):
+    connector_id: str | None = Field(default=None, max_length=48)
+    name: str = Field(default="Obsidian Governance Vault", min_length=3, max_length=160)
+    vault_name: str = Field(default="Regulated AI Governance", min_length=1, max_length=160)
+    vault_path: str = Field(default="demo/obsidian-vault", min_length=1, max_length=1000)
+    include_folders: list[str] = Field(default_factory=lambda: ["Policies", "Controls"], max_length=20)
+    required_tags: list[str] = Field(default_factory=lambda: ["governed-ai"], max_length=20)
+    default_owner: str = Field(default="Knowledge Governance", min_length=3, max_length=120)
+    classification: Literal["public", "internal", "confidential", "restricted"] = "internal"
+    review_days: int = Field(default=365, ge=1, le=1825)
+    operator_id: str = Field(default="knowledge.operator", min_length=3, max_length=120)
+
+
+class ObsidianApplyRequest(BaseModel):
+    operator_id: str = Field(default="knowledge.approver", min_length=3, max_length=120)
+    comment: str = Field(min_length=10, max_length=1000)
 
 
 class ContextUnlockRequest(BaseModel):
@@ -1663,8 +1739,8 @@ def enterprise_capabilities(principal: EnterprisePrincipal = Depends(require_rol
         "api_version": "v1",
         "tenant_id": principal.tenant_id,
         "principal": {"subject": principal.subject, "role": principal.role, "key_fingerprint": principal.key_fingerprint},
-        "controls": ["rbac", "tenant-boundary", "idempotency", "pagination", "outbox", "audit-attribution", "knowledge-release-gates"],
-        "resources": ["control-lifecycles", "data-subject-requests", "knowledge-sources", "knowledge-claims", "knowledge-changes", "knowledge-releases", "audit-events", "outbox-events"],
+        "controls": ["rbac", "tenant-boundary", "idempotency", "pagination", "outbox", "audit-attribution", "knowledge-release-gates", "connector-path-allowlist", "persisted-sync-preview"],
+        "resources": ["control-lifecycles", "data-subject-requests", "knowledge-sources", "knowledge-claims", "knowledge-changes", "knowledge-releases", "knowledge-connectors", "knowledge-graph", "audit-events", "outbox-events"],
     }
 
 
@@ -1818,6 +1894,72 @@ def enterprise_knowledge_changes(limit: int = Query(default=50, ge=1, le=200), o
 @app.get("/api/v1/knowledge/releases", tags=["Enterprise Knowledge"])
 def enterprise_knowledge_releases(limit: int = Query(default=50, ge=1, le=200), offset: int = Query(default=0, ge=0), principal: EnterprisePrincipal = Depends(require_role("viewer"))) -> dict:
     return enterprise_knowledge_collection("releases", limit, offset, principal)
+
+
+@app.get("/api/v1/knowledge/graph", tags=["Enterprise Knowledge"])
+def enterprise_knowledge_graph(principal: EnterprisePrincipal = Depends(require_role("viewer"))) -> dict:
+    ensure_enterprise_resource_tenant(principal)
+    with SessionLocal() as session:
+        return {**build_knowledge_graph(session), "tenant_id": principal.tenant_id}
+
+
+@app.get("/api/v1/knowledge/connectors/obsidian", tags=["Enterprise Knowledge"])
+def enterprise_obsidian_connectors(principal: EnterprisePrincipal = Depends(require_role("viewer"))) -> dict:
+    ensure_enterprise_resource_tenant(principal)
+    return {**obsidian_connector_status(), "tenant_id": principal.tenant_id}
+
+
+@app.post("/api/v1/knowledge/connectors/obsidian/previews", tags=["Enterprise Knowledge"])
+def enterprise_preview_obsidian_vault(
+    request: ObsidianPreviewRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    principal: EnterprisePrincipal = Depends(require_role("operator")),
+) -> dict:
+    ensure_enterprise_resource_tenant(principal)
+    body = {**request.model_dump(), "operator_id": principal.subject}
+    connector_ref = request.connector_id or f"vault:{hashlib.sha256(request.vault_name.encode()).hexdigest()[:16]}"
+    return idempotent_enterprise_mutation(
+        principal,
+        "/api/v1/knowledge/connectors/obsidian/previews",
+        idempotency_key,
+        body,
+        lambda: preview_obsidian_vault(ObsidianPreviewRequest(**body)),
+        connector_ref,
+        "enterprise.knowledge.obsidian.preview.staged",
+        lambda result: {
+            "connector_id": result["connector"]["id"],
+            "preview_id": result["preview"]["id"],
+            "summary": result["preview"]["summary"],
+            "scan_digest": result["preview"]["scan_digest"],
+        },
+    )
+
+
+@app.post("/api/v1/knowledge/connectors/obsidian/previews/{preview_id}/apply", tags=["Enterprise Knowledge"])
+def enterprise_apply_obsidian_preview(
+    preview_id: str,
+    request: ObsidianApplyRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    principal: EnterprisePrincipal = Depends(require_role("approver")),
+) -> dict:
+    ensure_enterprise_resource_tenant(principal)
+    body = {**request.model_dump(), "operator_id": principal.subject}
+    return idempotent_enterprise_mutation(
+        principal,
+        f"/api/v1/knowledge/connectors/obsidian/previews/{preview_id}/apply",
+        idempotency_key,
+        body,
+        lambda: apply_obsidian_vault_preview(preview_id, ObsidianApplyRequest(**body)),
+        preview_id,
+        "enterprise.knowledge.obsidian.preview.applied",
+        lambda result: {
+            "connector_id": result["connector"]["id"],
+            "preview_id": result["preview"]["id"],
+            "summary": result["preview"]["summary"],
+            "result_count": len(result["results"]),
+            "publication": result["publication"],
+        },
+    )
 
 
 @app.post("/api/v1/knowledge/sources", tags=["Enterprise Knowledge"])
@@ -2159,6 +2301,368 @@ def serialize_knowledge_release(item: KnowledgeRelease) -> dict:
     }
 
 
+def serialize_knowledge_connector(item: KnowledgeConnector) -> dict:
+    return {
+        "id": item.id,
+        "kind": item.kind,
+        "name": item.name,
+        "vault_name": item.vault_name,
+        "vault_ref": Path(item.vault_path).name,
+        "status": item.status,
+        "include_folders": item.include_folders_json,
+        "required_tags": item.required_tags_json,
+        "default_owner": item.default_owner,
+        "classification": item.classification,
+        "review_days": item.review_days,
+        "last_scan_digest": item.last_scan_digest,
+        "last_scan_at": item.last_scan_at.isoformat() if item.last_scan_at else None,
+        "last_sync_at": item.last_sync_at.isoformat() if item.last_sync_at else None,
+        "created_at": item.created_at.isoformat(),
+        "updated_at": item.updated_at.isoformat(),
+    }
+
+
+def serialize_connector_file(item: KnowledgeConnectorFile) -> dict:
+    return {
+        "id": item.id,
+        "connector_id": item.connector_id,
+        "relative_path": item.relative_path,
+        "title": item.title,
+        "content_hash": item.content_hash,
+        "source_id": item.source_id,
+        "status": item.status,
+        "obsidian_uri": item.obsidian_uri,
+        "metadata": item.metadata_json,
+        "links": item.links_json,
+        "last_synced_at": item.last_synced_at.isoformat(),
+    }
+
+
+def _public_preview_change(item: dict) -> dict:
+    return {
+        key: redact_value(value)
+        for key, value in item.items()
+        if key not in {"content", "resolved_path"}
+    }
+
+
+def serialize_sync_preview(item: KnowledgeSyncPreview) -> dict:
+    return {
+        "id": item.id,
+        "connector_id": item.connector_id,
+        "status": item.status,
+        "scan_digest": item.scan_digest,
+        "changes": [_public_preview_change(change) for change in item.changes_json],
+        "skipped": redact_value(item.skipped_json),
+        "summary": item.summary_json,
+        "created_by": item.created_by,
+        "created_at": item.created_at.isoformat(),
+        "applied_by": item.applied_by,
+        "applied_at": item.applied_at.isoformat() if item.applied_at else None,
+    }
+
+
+def register_knowledge_source(
+    session: Session,
+    *,
+    title: str,
+    content: str,
+    classification: str,
+    owner: str,
+    source_type: str,
+    review_days: int,
+    event_metadata: dict | None = None,
+) -> tuple[KnowledgeSource, KnowledgeChange]:
+    content_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
+    if session.scalar(select(KnowledgeSource).where(KnowledgeSource.content_hash == content_hash)):
+        raise HTTPException(status_code=409, detail="This immutable source content is already registered.")
+    source_id = f"ksrc_{uuid4().hex[:12]}"
+    change_id = f"kchg_{uuid4().hex[:12]}"
+    policy = classify_policy(content)
+    quarantined = policy["decision"] == "denied" or contains_secret(content)
+    source = KnowledgeSource(
+        id=source_id,
+        title=title,
+        content=content,
+        classification=classification,
+        owner=owner,
+        status="quarantined" if quarantined else "under_review",
+        content_hash=content_hash,
+        source_type=source_type,
+        review_due=datetime.now(UTC) + timedelta(days=review_days),
+    )
+    proposed = [] if quarantined else compile_claims(content, source_id, owner)
+    current_claims = [
+        serialize_knowledge_claim(item)
+        for item in session.scalars(select(KnowledgeClaim).where(KnowledgeClaim.status == "published")).all()
+    ]
+    contradictions = find_contradictions(proposed, current_claims)
+    question_events = session.scalars(select(AuditEvent).where(AuditEvent.event_type == "classify_request")).all()
+    claim_tokens = set(tokenize(" ".join(item["statement"] for item in proposed)))
+    affected_runs = sum(bool(claim_tokens & set(tokenize(event.metadata_json.get("question", "")))) for event in question_events)
+    change = KnowledgeChange(
+        id=change_id,
+        source_id=source_id,
+        status="quarantined" if quarantined else "pending_review",
+        risk="high" if quarantined or contradictions else "medium",
+        summary="Source quarantined after injection or secret scan." if quarantined else f"Compiled {len(proposed)} candidate claims from {title}.",
+        proposed_claims_json=proposed,
+        contradictions_json=contradictions,
+        affected_runs=affected_runs,
+    )
+    session.add_all([source, change])
+    metadata = {
+        "source_id": source_id,
+        "classification": classification,
+        "content_hash": content_hash,
+        "claims": len(proposed),
+        **(event_metadata or {}),
+    }
+    audit(
+        session,
+        change_id,
+        owner,
+        "knowledge_source_ingested",
+        "denied" if quarantined else "approval_required",
+        change.summary,
+        metadata,
+    )
+    return source, change
+
+
+def stage_obsidian_preview(session: Session, request: ObsidianPreviewRequest, actor: str | None = None) -> dict:
+    actor = actor or request.operator_id
+    connector = session.get(KnowledgeConnector, request.connector_id) if request.connector_id else None
+    if request.connector_id and not connector:
+        raise HTTPException(status_code=404, detail="Knowledge connector not found.")
+    try:
+        scan = scan_obsidian_vault(
+            request.vault_path if not connector else connector.vault_path,
+            request.vault_name,
+            ROOT.parent,
+            request.include_folders,
+            request.required_tags,
+        )
+    except ObsidianConnectorError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    now = datetime.now(UTC)
+    if not connector:
+        connector = KnowledgeConnector(
+            id=f"kcon_{uuid4().hex[:12]}",
+            name=request.name,
+            vault_name=request.vault_name,
+            vault_path=scan["resolved_path"],
+            include_folders_json=request.include_folders,
+            required_tags_json=request.required_tags,
+            default_owner=request.default_owner,
+            classification=request.classification,
+            review_days=request.review_days,
+        )
+        session.add(connector)
+        session.flush()
+    else:
+        connector.name = request.name
+        connector.vault_name = request.vault_name
+        connector.include_folders_json = request.include_folders
+        connector.required_tags_json = request.required_tags
+        connector.default_owner = request.default_owner
+        connector.classification = request.classification
+        connector.review_days = request.review_days
+        connector.updated_at = now
+
+    existing = {
+        item.relative_path: item
+        for item in session.scalars(select(KnowledgeConnectorFile).where(KnowledgeConnectorFile.connector_id == connector.id)).all()
+    }
+    scanned = {item["relative_path"]: item for item in scan["files"]}
+    changes: list[dict] = []
+    summary = {"new": 0, "modified": 0, "deleted": 0, "unchanged": 0, "skipped": len(scan["skipped"])}
+    for relative_path, note in scanned.items():
+        current = existing.get(relative_path)
+        current_snapshot_hash = (current.metadata_json or {}).get("snapshot_hash") if current else None
+        snapshot_matches = bool(
+            current
+            and (
+                current_snapshot_hash == note["snapshot_hash"]
+                if current_snapshot_hash
+                else current.content_hash == note["content_hash"]
+            )
+        )
+        change_type = "new" if not current or current.status == "tombstoned" else "unchanged" if snapshot_matches else "modified"
+        summary[change_type] += 1
+        policy = classify_policy(note["content"])
+        note["security_status"] = "quarantined" if policy["decision"] == "denied" or contains_secret(note["content"]) else "reviewable"
+        note["change_type"] = change_type
+        changes.append(note)
+    for relative_path, current in existing.items():
+        if current.status == "active" and relative_path not in scanned:
+            summary["deleted"] += 1
+            changes.append(
+                {
+                    **serialize_connector_file(current),
+                    "change_type": "deleted",
+                    "security_status": "retention_review",
+                    "excerpt": "Published knowledge is retained until an explicit retirement decision.",
+                }
+            )
+
+    preview = KnowledgeSyncPreview(
+        id=f"kprev_{uuid4().hex[:12]}",
+        connector_id=connector.id,
+        status="staged",
+        scan_digest=scan["scan_digest"],
+        changes_json=changes,
+        skipped_json=scan["skipped"],
+        summary_json=summary,
+        created_by=actor,
+    )
+    connector.last_scan_digest = scan["scan_digest"]
+    connector.last_scan_at = now
+    connector.status = "preview_ready"
+    session.add(preview)
+    audit(
+        session,
+        preview.id,
+        actor,
+        "obsidian_preview_staged",
+        "approval_required",
+        f"Staged Obsidian vault diff with {summary['new']} new, {summary['modified']} modified, and {summary['deleted']} deleted notes.",
+        {"connector_id": connector.id, "preview_id": preview.id, "summary": summary, "scan_digest": scan["scan_digest"]},
+    )
+    session.commit()
+    return {"connector": serialize_knowledge_connector(connector), "preview": serialize_sync_preview(preview)}
+
+
+def apply_obsidian_preview(session: Session, preview_id: str, request: ObsidianApplyRequest, actor: str | None = None) -> dict:
+    actor = actor or request.operator_id
+    preview = session.get(KnowledgeSyncPreview, preview_id)
+    if not preview:
+        raise HTTPException(status_code=404, detail="Obsidian sync preview not found.")
+    if preview.status != "staged":
+        raise HTTPException(status_code=409, detail="Obsidian sync preview is no longer awaiting application.")
+    if datetime.now(UTC) - _aware(preview.created_at) > timedelta(minutes=30):
+        preview.status = "expired"
+        session.commit()
+        raise HTTPException(status_code=409, detail="Obsidian sync preview expired. Run a fresh scan.")
+    connector = session.get(KnowledgeConnector, preview.connector_id)
+    if not connector:
+        raise HTTPException(status_code=404, detail="Knowledge connector not found.")
+    try:
+        scan = scan_obsidian_vault(
+            connector.vault_path,
+            connector.vault_name,
+            ROOT.parent,
+            connector.include_folders_json,
+            connector.required_tags_json,
+        )
+    except ObsidianConnectorError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if scan["scan_digest"] != preview.scan_digest:
+        raise HTTPException(status_code=409, detail="Vault changed after preview. Run a fresh scan before applying.")
+
+    scanned = {item["relative_path"]: item for item in scan["files"]}
+    existing_files = {
+        item.relative_path: item
+        for item in session.scalars(select(KnowledgeConnectorFile).where(KnowledgeConnectorFile.connector_id == connector.id)).all()
+    }
+    results: list[dict] = []
+    for staged in preview.changes_json:
+        change_type = staged["change_type"]
+        relative_path = staged["relative_path"]
+        current_file = existing_files.get(relative_path)
+        if change_type == "unchanged":
+            continue
+        if change_type == "deleted":
+            if current_file:
+                current_file.status = "tombstoned"
+                current_file.last_synced_at = datetime.now(UTC)
+            results.append({"relative_path": relative_path, "action": "retention_review_required", "source_id": current_file.source_id if current_file else None})
+            continue
+
+        note = scanned.get(relative_path)
+        if not note or note["snapshot_hash"] != staged["snapshot_hash"]:
+            raise HTTPException(status_code=409, detail=f"Vault note changed after preview: {relative_path}")
+        source = session.scalar(select(KnowledgeSource).where(KnowledgeSource.content_hash == note["content_hash"]))
+        change = None
+        if not source:
+            source_type = note["source_type"] if note["source_type"] in {"policy", "procedure", "standard", "research", "case_guidance"} else "policy"
+            source, change = register_knowledge_source(
+                session,
+                title=note["title"],
+                content=note["content"],
+                classification=note["classification"] or connector.classification,
+                owner=note["owner"] or connector.default_owner,
+                source_type=source_type,
+                review_days=connector.review_days,
+                event_metadata={"connector_id": connector.id, "connector_kind": "obsidian", "relative_path": relative_path},
+            )
+        file_id = current_file.id if current_file else f"kfile_{hashlib.sha256(f'{connector.id}:{relative_path}'.encode()).hexdigest()[:16]}"
+        metadata = {
+            "classification": note["classification"],
+            "owner": note["owner"] or connector.default_owner,
+            "policy_domain": note["policy_domain"],
+            "tags": note["tags"],
+            "review_due": note["review_due"],
+            "snapshot_hash": note["snapshot_hash"],
+        }
+        if current_file:
+            current_file.title = note["title"]
+            current_file.content_hash = note["content_hash"]
+            current_file.source_id = source.id
+            current_file.status = "active"
+            current_file.obsidian_uri = note["obsidian_uri"]
+            current_file.metadata_json = metadata
+            current_file.links_json = note["links"]
+            current_file.last_synced_at = datetime.now(UTC)
+        else:
+            current_file = KnowledgeConnectorFile(
+                id=file_id,
+                connector_id=connector.id,
+                relative_path=relative_path,
+                title=note["title"],
+                content_hash=note["content_hash"],
+                source_id=source.id,
+                status="active",
+                obsidian_uri=note["obsidian_uri"],
+                metadata_json=metadata,
+                links_json=note["links"],
+            )
+            session.add(current_file)
+        results.append(
+            {
+                "relative_path": relative_path,
+                "action": "linked_existing_source" if not change else "created_review_change",
+                "source_id": source.id,
+                "change_id": change.id if change else None,
+                "obsidian_uri": note["obsidian_uri"],
+            }
+        )
+
+    preview.status = "applied"
+    preview.applied_by = actor
+    preview.applied_at = datetime.now(UTC)
+    connector.status = "connected"
+    connector.last_sync_at = datetime.now(UTC)
+    connector.updated_at = datetime.now(UTC)
+    audit(
+        session,
+        preview.id,
+        actor,
+        "obsidian_preview_applied",
+        "allowed",
+        f"Applied controlled Obsidian sync with {len(results)} governed note transitions.",
+        {"connector_id": connector.id, "preview_id": preview.id, "result_count": len(results), "comment": redact_pii(request.comment)},
+    )
+    session.commit()
+    return {
+        "connector": serialize_knowledge_connector(connector),
+        "preview": serialize_sync_preview(preview),
+        "results": results,
+        "publication": "human_review_required",
+    }
+
+
 def serialize_secure_context(item: SecureContext) -> dict:
     expired = _aware(item.expires_at) <= datetime.now(UTC)
     status = "expired" if expired and item.status == "active" else item.status
@@ -2260,10 +2764,187 @@ def build_knowledge_overview(session: Session) -> dict:
     }
 
 
+def build_knowledge_graph(session: Session) -> dict:
+    connectors = session.scalars(select(KnowledgeConnector).order_by(KnowledgeConnector.created_at.desc()).limit(12)).all()
+    connector_files = session.scalars(select(KnowledgeConnectorFile).order_by(KnowledgeConnectorFile.last_synced_at.desc()).limit(80)).all()
+    sources = session.scalars(select(KnowledgeSource).order_by(KnowledgeSource.created_at.desc()).limit(50)).all()
+    claims = session.scalars(select(KnowledgeClaim).order_by(KnowledgeClaim.updated_at.desc()).limit(80)).all()
+    changes = session.scalars(select(KnowledgeChange).order_by(KnowledgeChange.created_at.desc()).limit(40)).all()
+    releases = session.scalars(select(KnowledgeRelease).order_by(KnowledgeRelease.created_at.desc()).limit(24)).all()
+    run_events = session.scalars(
+        select(AuditEvent).where(AuditEvent.event_type == "classify_request").order_by(AuditEvent.created_at.desc()).limit(12)
+    ).all()
+    nodes: dict[str, dict] = {}
+    edges: list[dict] = []
+
+    def add_node(node_id: str, node_type: str, label: str, status: str, metadata: dict, **extra) -> None:
+        nodes[node_id] = {
+            "id": node_id,
+            "type": node_type,
+            "label": redact_pii(label),
+            "status": status,
+            "metadata": redact_value(metadata),
+            **extra,
+        }
+
+    def add_edge(source_id: str, target_id: str, relation: str, inferred: bool = False) -> None:
+        if source_id in nodes and target_id in nodes:
+            edges.append(
+                {
+                    "id": f"gedge_{len(edges) + 1}",
+                    "source": source_id,
+                    "target": target_id,
+                    "relation": relation,
+                    "inferred": inferred,
+                }
+            )
+
+    for connector in connectors:
+        add_node(
+            connector.id,
+            "connector",
+            connector.name,
+            connector.status,
+            {"kind": connector.kind, "vault": connector.vault_name, "last_sync_at": connector.last_sync_at.isoformat() if connector.last_sync_at else None},
+        )
+    file_title_index: dict[str, str] = {}
+    for item in connector_files:
+        add_node(
+            item.id,
+            "note",
+            item.title,
+            item.status,
+            {"path": item.relative_path, "tags": item.metadata_json.get("tags", []), "owner": item.metadata_json.get("owner")},
+            obsidian_uri=item.obsidian_uri,
+        )
+        file_title_index[item.title.casefold()] = item.id
+        file_title_index[Path(item.relative_path).stem.casefold()] = item.id
+        add_edge(item.connector_id, item.id, "contains")
+    for item in sources:
+        linked_file = next((file for file in connector_files if file.source_id == item.id), None)
+        add_node(
+            item.id,
+            "source",
+            item.title,
+            item.status,
+            {"classification": item.classification, "owner": item.owner, "integrity": item.content_hash[:16]},
+            obsidian_uri=linked_file.obsidian_uri if linked_file else None,
+        )
+    for item in connector_files:
+        if item.source_id:
+            add_edge(item.id, item.source_id, "materialized_as")
+        for linked_title in item.links_json:
+            linked_id = file_title_index.get(linked_title.casefold())
+            if linked_id:
+                add_edge(item.id, linked_id, "wikilink")
+    for item in claims:
+        add_node(
+            item.id,
+            "claim",
+            item.statement[:92],
+            item.status,
+            {"risk": item.risk, "confidence": item.confidence, "owner": item.owner},
+            risk=item.risk,
+        )
+        add_edge(item.source_id, item.id, "compiled_into")
+    for item in changes:
+        add_node(
+            item.id,
+            "change",
+            item.summary[:92],
+            item.status,
+            {"risk": item.risk, "contradictions": len(item.contradictions_json), "affected_runs": item.affected_runs},
+            risk=item.risk,
+        )
+        add_edge(item.source_id, item.id, "proposed_as")
+    for item in releases:
+        add_node(
+            item.id,
+            "release",
+            item.version,
+            item.status,
+            {"approved_by": item.approved_by, "claims_added": item.claims_added, "integrity": item.integrity_digest[:16]},
+        )
+        add_edge(item.change_id, item.id, "published_as")
+        add_edge(item.source_id, item.id, "included_in")
+    published_claims = [item for item in claims if item.status == "published"]
+    overlap_edges = 0
+    for event in run_events:
+        question = str(event.metadata_json.get("question", "Historical governed run"))
+        run_node_id = f"graph_run_{event.run_id}"
+        if run_node_id not in nodes:
+            add_node(
+                run_node_id,
+                "run",
+                question[:92],
+                event.decision,
+                {"run_id": event.run_id, "decision": event.decision, "observed_at": event.created_at.isoformat()},
+            )
+        question_tokens = set(tokenize(question))
+        for claim in published_claims:
+            overlap = sorted(question_tokens & set(tokenize(claim.statement)))
+            if overlap and overlap_edges < 36:
+                add_edge(claim.id, run_node_id, "lexical_run_overlap", inferred=True)
+                overlap_edges += 1
+
+    type_counts: dict[str, int] = {}
+    for node in nodes.values():
+        type_counts[node["type"]] = type_counts.get(node["type"], 0) + 1
+    return {
+        "generated_at": datetime.now(UTC).isoformat(),
+        "nodes": list(nodes.values()),
+        "edges": edges,
+        "metrics": {"nodes": len(nodes), "edges": len(edges), "types": type_counts},
+        "semantics": {
+            "authoritative": ["contains", "materialized_as", "wikilink", "compiled_into", "proposed_as", "published_as", "included_in"],
+            "inferred": ["lexical_run_overlap"],
+            "note": "Inferred run edges show lexical evidence overlap and do not assert causal model reasoning.",
+        },
+    }
+
+
 @app.get("/api/knowledge/overview", tags=["Knowledge Governance"])
 def knowledge_overview() -> dict:
     with SessionLocal() as session:
         return build_knowledge_overview(session)
+
+
+@app.get("/api/knowledge/connectors/obsidian", tags=["Knowledge Connectors"])
+def obsidian_connector_status() -> dict:
+    with SessionLocal() as session:
+        connectors = session.scalars(select(KnowledgeConnector).order_by(KnowledgeConnector.created_at.desc())).all()
+        files = session.scalars(select(KnowledgeConnectorFile).order_by(KnowledgeConnectorFile.last_synced_at.desc()).limit(100)).all()
+        previews = session.scalars(select(KnowledgeSyncPreview).order_by(KnowledgeSyncPreview.created_at.desc()).limit(10)).all()
+        return {
+            "security_mode": connector_security_mode(),
+            "default_config": {
+                "vault_path": "demo/obsidian-vault" if connector_security_mode() == "local_development" else "",
+                "vault_name": "Regulated AI Governance",
+                "include_folders": ["Policies", "Controls"],
+                "required_tags": ["governed-ai"],
+            },
+            "connectors": [serialize_knowledge_connector(item) for item in connectors],
+            "files": [serialize_connector_file(item) for item in files],
+            "previews": [serialize_sync_preview(item) for item in previews],
+        }
+
+
+@app.post("/api/knowledge/connectors/obsidian/previews", tags=["Knowledge Connectors"])
+def preview_obsidian_vault(request: ObsidianPreviewRequest) -> dict:
+    with SessionLocal() as session:
+        return stage_obsidian_preview(session, request)
+
+
+@app.post("/api/knowledge/connectors/obsidian/previews/{preview_id}/apply", tags=["Knowledge Connectors"])
+def apply_obsidian_vault_preview(preview_id: str, request: ObsidianApplyRequest) -> dict:
+    with SessionLocal() as session:
+        return apply_obsidian_preview(session, preview_id, request)
+
+
+@app.get("/api/knowledge/graph", tags=["Knowledge Governance"])
+def knowledge_governance_graph() -> dict:
+    with SessionLocal() as session:
+        return build_knowledge_graph(session)
 
 
 @app.post("/api/knowledge/sources", tags=["Knowledge Governance"])

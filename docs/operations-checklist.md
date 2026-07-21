@@ -72,6 +72,21 @@ Use this checklist when moving from a local evaluation to a shared or deployed e
 - [ ] Verify plaintext protected context does not appear in standard logs, traces, evidence exports, analytics, or error reports.
 - [ ] Reject credentials and API keys from protected context and require references to the enterprise secrets vault.
 
+## Obsidian Connector and Knowledge Graph
+
+- [ ] Mount or replicate the approved Markdown vault on the backend host with read-only permissions.
+- [ ] Set `OBSIDIAN_ALLOWED_ROOTS` to explicit server-side roots; verify production remains disabled when the setting is empty.
+- [ ] Keep `.obsidian`, hidden content, symlinks, binaries, and oversized files outside the connector scope.
+- [ ] Define included folders, required governance tags, source owner, classification, and review interval for each connector.
+- [ ] Verify the persisted preview contains only expected new, modified, deleted, and excluded notes before apply.
+- [ ] Confirm apply fails when the vault changes after preview and when the preview is older than 30 minutes.
+- [ ] Confirm connector deletion creates a tombstone and retention-review action rather than deleting published knowledge.
+- [ ] Restrict preview to `operator` and apply to `approver`; monitor connector scan and apply audit events.
+- [ ] Confirm integration outbox payloads, logs, traces, and errors contain no Markdown plaintext.
+- [ ] Treat `lexical_run_overlap` graph edges as inferred review signals, not authoritative lineage.
+- [ ] Validate `obsidian://open` links on managed operator devices and document the fallback when the desktop app is unavailable.
+- [ ] Operate the connector beside a controlled content replica or managed workspace; do not scan arbitrary employee local drives.
+
 ## CORS
 
 - [ ] Replace localhost defaults with the exact deployed frontend origins.
@@ -99,6 +114,7 @@ Use this checklist when moving from a local evaluation to a shared or deployed e
 - [ ] Confirm malicious retrieved documents are treated as untrusted data and are not repeated as instructions.
 - [ ] Confirm missing retrieval evidence produces the safe `I don't know` response.
 - [ ] Confirm unsafe knowledge sources are quarantined, high-risk diffs require review comments, and only approved sources enter RAG.
+- [ ] Confirm path traversal, symlinked roots, preview/apply drift, and direct connector publication are blocked.
 - [ ] Confirm protected context cannot override policy, is owner-bound, expires, and produces metadata-only audit evidence.
 - [ ] Test PII redaction in audit summaries and operator comments.
 - [ ] Add payload validation, authentication, authorization, and abuse tests before exposing the API beyond a controlled evaluation environment.
