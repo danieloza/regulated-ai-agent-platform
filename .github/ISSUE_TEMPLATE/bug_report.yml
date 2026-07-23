@@ -1,0 +1,88 @@
+name: Bug report
+description: Report a reproducible defect in the reference implementation.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not report vulnerabilities, credentials, personal data, or exploit details here. Follow the [security policy](https://github.com/danieloza/regulated-ai-agent-platform/security/policy) instead.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: Describe the observed defect and its effect.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction
+      description: Provide the smallest deterministic sequence that reproduces the issue.
+      placeholder: |
+        1. Start the backend with...
+        2. Open...
+        3. Submit...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - Backend API
+        - Operator UI
+        - Policy or security evaluations
+        - Knowledge governance
+        - Identity or approvals
+        - Audit or evidence export
+        - Database or migrations
+        - Docker or Kubernetes
+        - CI/CD or supply chain
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: revision
+    attributes:
+      label: Version or commit
+      description: Release tag or commit SHA where the defect occurs.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Python/Node version, database mode, browser, and run method as relevant.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Sanitized evidence
+      description: Add logs, screenshots, or test output after removing secrets and personal data.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Submission checks
+      options:
+        - label: I searched existing issues for the same defect.
+          required: true
+        - label: I removed credentials, tokens, personal data, and private infrastructure details.
+          required: true
+        - label: This is not a security vulnerability.
+          required: true
