@@ -6,7 +6,7 @@ Use this checklist when moving from a local evaluation to a shared or deployed e
 
 - [ ] Use Python 3.12 and Node.js 22.
 - [ ] Create and activate a backend virtual environment, then install `pip install -e ".[dev]"` from `backend/`.
-- [ ] Install frontend dependencies with `npm install` from `frontend/`.
+- [ ] Install frontend dependencies with `npm ci` from `frontend/`.
 - [ ] Start the API on `127.0.0.1:8000` and the Vite frontend on `127.0.0.1:5173`.
 - [ ] Confirm `GET /api/health` returns `status: ok` and the UI loads without API errors.
 - [ ] Keep the default SQLite database limited to one local backend instance.
@@ -18,6 +18,7 @@ Use this checklist when moving from a local evaluation to a shared or deployed e
 - [ ] Confirm the Redis and backend health checks pass before validating the frontend.
 - [ ] Inspect backend logs for structured request records and unexpected `500` responses.
 - [ ] Replace the Compose PostgreSQL fallback password before using the `postgres` profile.
+- [ ] Start PostgreSQL and Redis, run the one-off `migrate` service to completion, and only then start the backend/frontend services.
 - [ ] Use named volumes intentionally and define a backup or disposal policy for their data.
 
 ## Redis and Rate Limits
@@ -34,7 +35,9 @@ Use this checklist when moving from a local evaluation to a shared or deployed e
 - [ ] Use SQLite only for local, single-instance, disposable data.
 - [ ] Configure PostgreSQL through `DATABASE_URL` before running multiple backend replicas.
 - [ ] Provision a least-privilege database identity for the backend; do not expose its password to the agent or frontend.
-- [ ] Add a reviewed schema migration process before evolving persistent production data.
+- [ ] Run `python -m alembic upgrade head` against a restored staging copy before applying a migration to production.
+- [ ] Require the Kubernetes migration Job to complete before rolling out the corresponding application image.
+- [ ] Confirm `APP_ENV=production`; automatic schema creation and bundled demo-data seeding are disabled in that mode.
 - [ ] Test connection limits, pooling, transaction behavior, backups, point-in-time recovery, and restore drills.
 - [ ] Define retention and deletion rules for documents, approvals, and audit events.
 
@@ -57,6 +60,46 @@ Use this checklist when moving from a local evaluation to a shared or deployed e
 - [ ] Drain pending outbox events into the approved SIEM, webhook relay, or event bus with retry and dead-letter handling.
 - [ ] Apply gateway-level TLS, request-size limits, rate limits, IP policy, and credential abuse alerts before external exposure.
 - [ ] Confirm audit and lifecycle pagination limits protect the database from unbounded reads.
+
+## Enterprise Identity and Trust
+
+- [ ] Configure `OIDC_ISSUER`, `OIDC_AUDIENCE`, and an HTTPS `OIDC_JWKS_URL` or secret-managed static JWKS.
+- [ ] Keep `OIDC_ALLOWED_ALGORITHMS` restricted to the approved asymmetric signing algorithms.
+- [ ] Map corporate groups to the minimum platform roles through `OIDC_GROUP_ROLE_MAP`; verify unmapped identities fail closed.
+- [ ] Confirm the configured tenant claim includes only authorized tenant IDs and test cross-tenant requests.
+- [ ] Require AAL2/MFA for regulated writes, approval decisions, policy release, and break-glass access.
+- [ ] Verify the requester cannot approve the same payload and that a changed payload digest is rejected.
+- [ ] Keep the local `/api/trust/*` demo routes behind a local-only or evaluation ingress; expose `/api/v1/trust/*` to enterprise clients.
+- [ ] Alert on repeated JWT failures, tenant mismatches, MFA step-up failures, maker-checker violations, and active break-glass grants.
+- [ ] Test identity-provider signing-key rotation, revoked sessions, expired tokens, and emergency access expiry.
+
+## Durable Delivery and Integration
+
+- [ ] Configure `CASE_MANAGEMENT_API_URL` as a fixed HTTPS destination; do not derive it from a request or model output.
+- [ ] Inject a random `CASE_MANAGEMENT_SIGNING_SECRET` of at least 32 characters and rotate it with the downstream owner.
+- [ ] Verify downstream processing is idempotent on the platform delivery ID and validates the payload digest and HMAC signature.
+- [ ] Alert on `retry_pending`, `failed`, and `dead_letter`; define retry ownership and a manual replay procedure.
+- [ ] Reconcile platform delivery IDs, payload digests, and response digests with the downstream case-management audit.
+- [ ] Keep sandbox mode enabled until the downstream contract, network policy, credentials, and data classification are approved.
+- [ ] Move due-delivery scheduling to the approved durable worker/queue before relying on unattended production retries.
+
+## Observability and SLOs
+
+- [ ] Scrape `/metrics` from every backend replica through an internal telemetry network.
+- [ ] Preserve `X-Request-ID` and `X-Correlation-ID` across gateway, API, worker, and downstream integration logs.
+- [ ] Dashboard request rate, error rate, latency, readiness, approval backlog, delivery age, retries, dead letters, and Redis fallback.
+- [ ] Define measurable SLOs and alert thresholds; the UI's delivery SLO is a contract example until validated against operating data.
+- [ ] Restrict `/metrics` and detailed health output from public ingress.
+- [ ] Verify log, metric, and trace retention and access controls match audit and privacy requirements.
+
+## Software Supply Chain
+
+- [ ] Require CI, dependency review, `pip-audit`, `npm audit`, CycloneDX SBOM generation, and the pinned container scanner to pass.
+- [ ] Review Dependabot pull requests with application tests and security ownership; do not auto-merge high-impact runtime changes.
+- [ ] Publish SBOM artifacts with the release and retain the source revision, image digest, and scanner results.
+- [ ] Pin release images by digest, sign them in the deployment pipeline, and verify signatures at admission.
+- [ ] Keep GitHub Actions pinned to reviewed commits for security-sensitive jobs and review automation updates as code changes.
+- [ ] Rebuild and rescan after base-image or critical dependency advisories.
 
 ## Governed Change Proposals
 
@@ -122,7 +165,10 @@ Use this checklist when moving from a local evaluation to a shared or deployed e
 ## Kubernetes
 
 - [ ] Replace example image tags with immutable, scanned image digests or release tags.
-- [ ] Replace the example SQLite `DATABASE_URL` Secret with an externally managed PostgreSQL connection secret.
+- [ ] Replace the placeholder `DATABASE_URL` with an externally managed PostgreSQL connection secret.
+- [ ] Inject IAM, JWKS, and integration secrets through an external secret manager rather than committing values.
+- [ ] Run and wait for `backend-schema-migration` before updating the backend Deployment.
+- [ ] Confirm `/api/health/ready` reports the required Alembic revision; production readiness fails closed on schema drift.
 - [ ] Confirm application containers run as non-root and do not require writable root filesystems.
 - [ ] Verify readiness and liveness probes, resource requests and limits, and HPA behavior under load.
 - [ ] Validate that the metrics pipeline required by the HPA is installed.
@@ -143,6 +189,8 @@ Use this checklist when moving from a local evaluation to a shared or deployed e
 - [ ] Confirm protected context cannot override policy, is owner-bound, expires, and produces metadata-only audit evidence.
 - [ ] Confirm proposal detection cannot authorize or execute its own recommendation and terminal decisions are preserved.
 - [ ] Confirm indirect injection, tool-scope escalation, approval bypass, and cross-tenant scenarios stop at their expected control under the current profile.
+- [ ] Confirm wrong-issuer, wrong-audience, expired, unsigned, low-assurance, unmapped-role, and cross-tenant OIDC tokens fail closed.
+- [ ] Confirm maker-checker, payload-digest, approval-expiry, delivery idempotency, bounded retry, and break-glass constraints.
 - [ ] Confirm candidate control failures change only the applicable path and that modeled blast-radius counts remain explicitly labeled.
 - [ ] Confirm containment cannot proceed without a prepared plan and substantive approver rationale.
 - [ ] Confirm verification replay changes a reachable candidate path to blocked and preserves `runtime_change_applied: false`.
@@ -152,11 +200,14 @@ Use this checklist when moving from a local evaluation to a shared or deployed e
 ## Release and Readiness
 
 - [ ] Run the backend tests, frontend build, and `docker compose config --quiet` from a clean checkout.
+- [ ] Run the Alembic upgrade against a fresh database and confirm the current revision is `head`.
+- [ ] Review dependency-audit, SBOM, dependency-review, and container-scan results.
 - [ ] Review `git diff` and confirm no generated artifacts, local paths, credentials, or unrelated files are included.
 - [ ] Record the application version, image digests, configuration revision, database migration, and rollback procedure.
 - [ ] Validate health, assistant query, tool gateway, approval, run details, ledger, and infrastructure status in the target environment.
 - [ ] Validate proposal detection, filtering, evidence inspection, RBAC, idempotent decisions, outbox delivery, and non-executing release handoff behavior.
 - [ ] Validate Security Twin simulation, blast-radius diff, containment approval, verification replay, evidence export, RBAC, idempotency, and outbox delivery.
+- [ ] Validate OIDC login, tenant/role mapping, MFA step-up, maker-checker approval, durable delivery, retry/dead-letter behavior, and downstream reconciliation.
 - [ ] Define owners and alerts for API errors, latency, Redis degradation, database health, approval backlog, and rate-limit spikes.
 - [ ] Review the threat model and production limitations for the intended data classification and exposure.
 - [ ] Obtain the required security, privacy, compliance, and operational approvals before handling regulated production data.

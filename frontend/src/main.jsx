@@ -57,6 +57,38 @@ const sampleQueries = [
   "Create case note for customer cus-1042 after KYC review.",
 ];
 
+const trustActors = {
+  requester: {
+    subject: "alex.morgan",
+    role: "operator",
+    tenant_id: "demo",
+    auth_method: "oidc",
+    assurance_level: "aal2",
+    groups: ["AI-Operators", "Customer-Operations"],
+  },
+  approver: {
+    subject: "marta.chen",
+    role: "approver",
+    tenant_id: "demo",
+    auth_method: "oidc",
+    assurance_level: "aal2",
+    groups: ["Compliance-Approvers"],
+  },
+  worker: {
+    subject: "integration.worker",
+    role: "admin",
+    tenant_id: "demo",
+    auth_method: "api_key",
+    assurance_level: "workload",
+    groups: ["Platform-Workloads"],
+  },
+};
+
+const trustCasePayload = {
+  customer_id: "cus-1042",
+  note: "KYC review completed; route the verified outcome to the controlled case system.",
+};
+
 const sections = [
   ["Operator Console", "operator-console", Activity],
   ["Safe RAG", "safe-rag", FileText],
@@ -67,6 +99,7 @@ const sections = [
   ["Control Lifecycle Matrix", "control-lifecycle-matrix", Workflow],
   ["Knowledge Control Center", "knowledge-control-center", BookOpenCheck],
   ["Governance Registry", "governance-registry", FileSpreadsheet],
+  ["Identity & Trust", "identity-trust", KeyRound],
   ["Tool Gateway", "tool-gateway", Workflow],
   ["Policy Engine", "policy-engine", Gavel],
   ["Security Twin", "security-twin", Network],
@@ -82,7 +115,7 @@ const presentationStories = {
   client: {
     label: "Client / Governance",
     shortLabel: "Client story",
-    duration: "7–9 min",
+    duration: "9–11 min",
     description: "An outcome-led walkthrough for decision makers, risk owners and prospective clients.",
     steps: [
       {
@@ -116,6 +149,14 @@ const presentationStories = {
         title: "Pause regulated writes for approval",
         body: "High-impact actions remain pending until an operator approves, denies or requests more information with an auditable comment.",
         cue: "Create a case-note approval only if you want a live interaction; otherwise explain the three-way decision workflow.",
+      },
+      {
+        target: "#identity-trust .trust-hero",
+        section: "identity-trust",
+        eyebrow: "IDENTITY & TRUST · PROVE WHO",
+        title: "Bind every high-impact action to workforce identity",
+        body: "OIDC claims, tenant membership, role and MFA assurance become a server-side access decision before maker-checker approval and durable delivery.",
+        cue: "Walk left to right: Alex requests, policy requires AAL2, Marta independently approves the exact payload digest, and the worker verifies delivery without giving credentials to the agent.",
       },
       {
         target: "#change-proposal-inbox .proposal-hero",
@@ -180,7 +221,7 @@ const presentationStories = {
   hr: {
     label: "HR / Portfolio",
     shortLabel: "Portfolio story",
-    duration: "6–8 min",
+    duration: "8–10 min",
     description: "A technical narrative focused on architecture, security judgment and production-shaped engineering.",
     steps: [
       {
@@ -206,6 +247,14 @@ const presentationStories = {
         title: "Run the adversarial path",
         body: "The prompt-injection lab makes abuse cases reproducible and connects runtime safeguards to regression testing.",
         cue: "Run the secret-exfiltration sample and point out that the agent has no shell, secrets or direct database credentials.",
+      },
+      {
+        target: "#identity-trust .trust-hero",
+        section: "identity-trust",
+        eyebrow: "04 · IDENTITY ARCHITECTURE",
+        title: "Show the enterprise trust boundary",
+        body: "Strict JWT validation, group-to-role mapping, tenant authorization, AAL2 step-up, maker-checker and digest-bound execution are enforced by FastAPI rather than the React client.",
+        cue: "Use the trace rail to explain how one correlation ID joins identity, access policy, approval, delivery, downstream verification and audit evidence.",
       },
       {
         target: "#security-twin .security-twin-hero",
@@ -402,6 +451,10 @@ function App() {
   const [proposalBusy, setProposalBusy] = useState("");
   const [proposalOwner, setProposalOwner] = useState("AI Governance");
   const [proposalComment, setProposalComment] = useState("Reviewed the evidence, blast radius, approvals, and rollback plan.");
+  const [trust, setTrust] = useState(null);
+  const [trustBusy, setTrustBusy] = useState("");
+  const [trustFlowApprovalId, setTrustFlowApprovalId] = useState("");
+  const [trustFlowDeliveryId, setTrustFlowDeliveryId] = useState("");
   const [riskFilter, setRiskFilter] = useState("all");
   const [riskSort, setRiskSort] = useState("score");
   const [governance, setGovernance] = useState(null);
@@ -518,6 +571,155 @@ function App() {
       ));
     } catch (error) {
       setErrorMessage(error.message);
+    }
+  }
+
+  async function loadTrust() {
+    try {
+      const response = await fetch(`${API}/api/trust/overview`);
+      if (!response.ok) throw new Error(`Identity and Trust request failed: ${response.status}`);
+      const payload = await response.json();
+      setTrust(payload);
+      setTrustFlowApprovalId((current) => (
+        payload.approvals.some((item) => item.id === current) ? current : payload.approvals[0]?.id ?? ""
+      ));
+      setTrustFlowDeliveryId((current) => (
+        payload.deliveries.some((item) => item.id === current) ? current : payload.deliveries[0]?.id ?? ""
+      ));
+    } catch (error) {
+      setErrorMessage(error.message);
+    }
+  }
+
+  async function evaluateTrustFlow() {
+    setTrustBusy("evaluate");
+    setErrorMessage("");
+    try {
+      const response = await fetch(`${API}/api/trust/access-decisions/evaluate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actor: trustActors.requester,
+          requested_tenant: "demo",
+          action: "case_note.create",
+          resource: "customer/cus-1042/case-notes",
+          payload: trustCasePayload,
+          correlation_id: `trace-ui-${Date.now()}`,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload?.error?.message ?? payload?.detail ?? `Trust evaluation failed: ${response.status}`);
+      setTrust(payload.overview);
+      setStatusMessage(`Access decision: ${payload.decision.decision}. ${payload.decision.reasons.join(", ")}.`);
+    } catch (error) {
+      setErrorMessage(error.message);
+    } finally {
+      setTrustBusy("");
+    }
+  }
+
+  async function requestTrustFlowApproval() {
+    setTrustBusy("request");
+    setErrorMessage("");
+    try {
+      const response = await fetch(`${API}/api/trust/approvals`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actor: trustActors.requester,
+          action: "case_note.create",
+          resource: "customer/cus-1042/case-notes",
+          payload: trustCasePayload,
+          correlation_id: `trace-ui-${Date.now()}`,
+          expires_minutes: 30,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload?.error?.message ?? payload?.detail ?? `Trust approval request failed: ${response.status}`);
+      setTrust(payload.overview);
+      setTrustFlowApprovalId(payload.approval.id);
+      setTrustFlowDeliveryId("");
+      setStatusMessage("Payload-bound approval created. A different AAL2 identity must decide it.");
+    } catch (error) {
+      setErrorMessage(error.message);
+    } finally {
+      setTrustBusy("");
+    }
+  }
+
+  async function approveTrustFlow() {
+    if (!currentTrustApproval || currentTrustApproval.status !== "pending") return;
+    setTrustBusy("approve");
+    setErrorMessage("");
+    try {
+      const response = await fetch(`${API}/api/trust/approvals/${currentTrustApproval.id}/decisions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actor: trustActors.approver,
+          decision: "approved",
+          expected_payload_digest: currentTrustApproval.payload_digest,
+          comment: "Independent AAL2 reviewer verified the exact payload, business purpose, tenant, and fixed destination.",
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload?.error?.message ?? payload?.detail ?? `Trust approval decision failed: ${response.status}`);
+      setTrust(payload.overview);
+      setStatusMessage("Maker-checker passed. Approval is bound to the reviewed SHA-256 payload digest.");
+    } catch (error) {
+      setErrorMessage(error.message);
+    } finally {
+      setTrustBusy("");
+    }
+  }
+
+  async function queueTrustDelivery() {
+    if (!currentTrustApproval || currentTrustApproval.status !== "approved") return;
+    setTrustBusy("queue");
+    setErrorMessage("");
+    try {
+      const response = await fetch(`${API}/api/trust/approvals/${currentTrustApproval.id}/execute`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actor: trustActors.requester,
+          expected_payload_digest: currentTrustApproval.payload_digest,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload?.error?.message ?? payload?.detail ?? `Durable delivery queue failed: ${response.status}`);
+      setTrust(payload.overview);
+      setTrustFlowDeliveryId(payload.delivery.id);
+      setStatusMessage("Exact approved payload persisted as a durable delivery; no browser-side execution occurred.");
+    } catch (error) {
+      setErrorMessage(error.message);
+    } finally {
+      setTrustBusy("");
+    }
+  }
+
+  async function dispatchTrustDelivery() {
+    if (!currentTrustDelivery || !["queued", "retry_pending"].includes(currentTrustDelivery.status)) return;
+    setTrustBusy("dispatch");
+    setErrorMessage("");
+    try {
+      const response = await fetch(`${API}/api/trust/deliveries/${currentTrustDelivery.id}/dispatch`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ actor: trustActors.worker }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload?.error?.message ?? payload?.detail ?? `Delivery dispatch failed: ${response.status}`);
+      setTrust(payload.overview);
+      setStatusMessage(
+        payload.delivery.mode === "sandbox"
+          ? "Sandbox delivery verified with integrity evidence; no external customer system was changed."
+          : `Enterprise delivery ${payload.delivery.status} with a persisted response digest.`,
+      );
+    } catch (error) {
+      setErrorMessage(error.message);
+    } finally {
+      setTrustBusy("");
     }
   }
 
@@ -1036,6 +1238,7 @@ function App() {
     loadAttacks();
     loadGovernance();
     loadChangeProposals();
+    loadTrust();
     loadSecurityTwin();
     loadLifecycle();
     loadDataSubject();
@@ -1376,6 +1579,21 @@ function App() {
     () => filteredProposals.find((item) => item.id === selectedProposalId) ?? filteredProposals[0] ?? null,
     [filteredProposals, selectedProposalId],
   );
+  const currentTrustApproval = useMemo(
+    () => (trust?.approvals ?? []).find((item) => item.id === trustFlowApprovalId)
+      ?? (trust?.approvals ?? []).find((item) => ["pending", "approved", "execution_queued"].includes(item.status))
+      ?? trust?.approvals?.[0]
+      ?? null,
+    [trust, trustFlowApprovalId],
+  );
+  const currentTrustDelivery = useMemo(
+    () => (trust?.deliveries ?? []).find((item) => item.id === trustFlowDeliveryId)
+      ?? (trust?.deliveries ?? []).find((item) => item.approval_id === currentTrustApproval?.id)
+      ?? trust?.deliveries?.[0]
+      ?? null,
+    [trust, trustFlowDeliveryId, currentTrustApproval?.id],
+  );
+  const currentTrustDecision = trust?.decisions?.[0] ?? null;
   useEffect(() => {
     if (selectedProposal) setProposalOwner(selectedProposal.owner);
   }, [selectedProposal?.id]);
@@ -2132,6 +2350,183 @@ function App() {
                   <ChevronRight size={14} />
                 </div>
               ))}
+            </div>
+          </section>
+
+          <section className="panel trust-plane-panel" id="identity-trust">
+            <div className="trust-hero">
+              <div>
+                <span className="trust-kicker"><KeyRound size={15} /> ENTERPRISE IDENTITY &amp; TRUST PLANE</span>
+                <h2>Prove who can authorize what</h2>
+                <p>Bind OIDC identity, tenant, role and MFA assurance to an exact payload—then carry the same evidence through independent approval, durable delivery and verification.</p>
+              </div>
+              <div className="trust-hero-actions">
+                <button type="button" disabled={Boolean(trustBusy)} onClick={evaluateTrustFlow}>
+                  <Fingerprint size={16} />
+                  {trustBusy === "evaluate" ? "Evaluating..." : "Evaluate access"}
+                </button>
+                <button className="trust-primary" type="button" disabled={Boolean(trustBusy)} onClick={requestTrustFlowApproval}>
+                  <Plus size={16} />
+                  New governed request
+                </button>
+                <button type="button" disabled={Boolean(trustBusy)} onClick={loadTrust} aria-label="Refresh Identity and Trust evidence">
+                  <RefreshCw className={trustBusy ? "spin" : ""} size={16} />
+                </button>
+              </div>
+            </div>
+
+            <div className="trust-boundary" role="note">
+              <ShieldCheck size={19} />
+              <div>
+                <strong>Server-side authorization boundary</strong>
+                <p>{trust?.operating_mode?.statement ?? "The browser may display claims, but only the API can authorize access or create delivery state."}</p>
+              </div>
+              <span>agent credentials: none</span>
+            </div>
+
+            <div className="trust-metrics" aria-label="Identity and Trust metrics">
+              <Metric label="Workforce identities" value={trust?.metrics?.workforce_identities ?? "—"} />
+              <Metric label="AAL2 coverage" value={trust ? `${trust.metrics.aal2_coverage_percent}%` : "—"} />
+              <Metric label="Maker-checker" value={trust ? `${trust.metrics.maker_checker_percent}%` : "—"} />
+              <Metric label="Verified delivery" value={trust ? `${trust.metrics.verified_delivery_percent}%` : "—"} />
+              <Metric label="Break-glass active" value={trust?.metrics?.active_break_glass ?? "—"} tone={(trust?.metrics?.active_break_glass ?? 0) ? "amber" : "default"} />
+            </div>
+
+            <div className="trust-workspace">
+              <aside className="trust-identity-rail">
+                <div className="trust-column-heading">
+                  <div><Fingerprint size={16} /><strong>Verified principals</strong></div>
+                  <span>workforce + workload</span>
+                </div>
+                <div className="trust-identity-list">
+                  {(trust?.identities ?? []).map((identity, index) => (
+                    <article className={index === 0 ? "active" : ""} key={identity.subject}>
+                      <div className="trust-avatar">{identity.display_name.split(" ").map((part) => part[0]).join("").slice(0, 2)}</div>
+                      <div>
+                        <strong>{identity.display_name}</strong>
+                        <span>{identity.subject}</span>
+                        <p>
+                          <code>{identity.role}</code>
+                          <code>{identity.assurance_level}</code>
+                          <code>{identity.tenant_id}</code>
+                        </p>
+                      </div>
+                      <i className={identity.session_state}><CheckCircle2 size={13} />{identity.session_state}</i>
+                    </article>
+                  ))}
+                </div>
+                <div className="trust-claims-proof">
+                  <span>Effective identity claims</span>
+                  <dl>
+                    <div><dt>Issuer</dt><dd>corporate OIDC</dd></div>
+                    <div><dt>Audience</dt><dd>regulated-ai-api</dd></div>
+                    <div><dt>Groups</dt><dd>AI-Operators</dd></div>
+                    <div><dt>AMR / ACR</dt><dd>mfa · aal2</dd></div>
+                  </dl>
+                  <p><LockKeyhole size={13} /> Tokens are validated and fingerprinted, never stored or rendered.</p>
+                </div>
+              </aside>
+
+              <article className="trust-decision-stage">
+                <div className="trust-column-heading trust-stage-heading">
+                  <div><Workflow size={16} /><strong>Governed execution chain</strong></div>
+                  <code>{currentTrustApproval?.correlation_id ?? currentTrustDecision?.correlation_id ?? "awaiting-trace"}</code>
+                </div>
+
+                <div className="trust-flow" aria-label="Identity to verified delivery flow">
+                  <div className={currentTrustDecision ? "complete" : "current"}>
+                    <span><Fingerprint size={16} /></span>
+                    <p><strong>Authenticate</strong><small>OIDC + AAL2</small></p>
+                  </div>
+                  <ChevronRight size={15} />
+                  <div className={currentTrustDecision?.decision === "denied" ? "blocked" : currentTrustDecision ? "complete" : ""}>
+                    <span><ShieldCheck size={16} /></span>
+                    <p><strong>Authorize</strong><small>{currentTrustDecision?.decision?.replaceAll("_", " ") ?? "policy pending"}</small></p>
+                  </div>
+                  <ChevronRight size={15} />
+                  <div className={currentTrustApproval?.maker_checker ? "complete" : currentTrustApproval?.status === "pending" ? "current" : ""}>
+                    <span><UserCheck size={16} /></span>
+                    <p><strong>Approve</strong><small>{currentTrustApproval?.status?.replaceAll("_", " ") ?? "not requested"}</small></p>
+                  </div>
+                  <ChevronRight size={15} />
+                  <div className={currentTrustDelivery?.status === "verified" ? "complete" : currentTrustDelivery?.status === "dead_letter" ? "blocked" : currentTrustDelivery ? "current" : ""}>
+                    <span><Link2 size={16} /></span>
+                    <p><strong>Deliver</strong><small>{currentTrustDelivery?.status?.replaceAll("_", " ") ?? "not queued"}</small></p>
+                  </div>
+                </div>
+
+                <div className="trust-decision-proof">
+                  <div>
+                    <span>LATEST ACCESS DECISION</span>
+                    <strong className={currentTrustDecision?.decision ?? "idle"}>
+                      {currentTrustDecision ? decisionIcon(currentTrustDecision.decision) : <Clock3 size={17} />}
+                      {currentTrustDecision?.decision?.replaceAll("_", " ") ?? "awaiting evaluation"}
+                    </strong>
+                    <p>{currentTrustDecision?.reasons?.map((reason) => reason.replaceAll("_", " ")).join(" · ") ?? "Run an evaluation to record role, tenant and assurance checks."}</p>
+                  </div>
+                  <dl>
+                    <div><dt>Tenant</dt><dd>{currentTrustDecision?.checks?.tenant_match ? "matched" : "—"}</dd></div>
+                    <div><dt>Role</dt><dd>{currentTrustDecision?.checks?.role_sufficient ? "sufficient" : "—"}</dd></div>
+                    <div><dt>Assurance</dt><dd>{currentTrustDecision?.checks?.assurance_sufficient ? "AAL2 passed" : "—"}</dd></div>
+                    <div><dt>Policy</dt><dd>IAM-01 / HITL-03</dd></div>
+                  </dl>
+                </div>
+
+                <div className="trust-payload-contract">
+                  <div>
+                    <span>PAYLOAD-BOUND CONTRACT</span>
+                    <strong>{currentTrustApproval?.action ?? "case_note.create"}</strong>
+                    <p>{currentTrustApproval?.resource ?? "customer/cus-1042/case-notes"}</p>
+                  </div>
+                  <code title={currentTrustApproval?.payload_digest ?? ""}>
+                    sha256:{currentTrustApproval?.payload_digest?.slice(0, 18) ?? "not-created"}…
+                  </code>
+                </div>
+
+                <div className="trust-action-chain">
+                  <button type="button" disabled={Boolean(trustBusy)} onClick={requestTrustFlowApproval}>
+                    <Plus size={15} /><span><small>STEP 1</small>Create request</span>
+                  </button>
+                  <button type="button" disabled={Boolean(trustBusy) || currentTrustApproval?.status !== "pending"} onClick={approveTrustFlow}>
+                    <UserCheck size={15} /><span><small>STEP 2</small>Approve as Marta</span>
+                  </button>
+                  <button type="button" disabled={Boolean(trustBusy) || currentTrustApproval?.status !== "approved"} onClick={queueTrustDelivery}>
+                    <Database size={15} /><span><small>STEP 3</small>Queue exact payload</span>
+                  </button>
+                  <button className="verify" type="button" disabled={Boolean(trustBusy) || !["queued", "retry_pending"].includes(currentTrustDelivery?.status)} onClick={dispatchTrustDelivery}>
+                    <CheckCircle2 size={15} /><span><small>STEP 4</small>Dispatch &amp; verify</span>
+                  </button>
+                </div>
+              </article>
+
+              <aside className="trust-evidence-rail">
+                <div className="trust-column-heading">
+                  <div><ShieldCheck size={16} /><strong>Control evidence</strong></div>
+                  <span>deny by default</span>
+                </div>
+                <div className="trust-control-list">
+                  {(trust?.controls ?? []).map((control) => (
+                    <article key={control.id}>
+                      <span><CheckCircle2 size={14} /></span>
+                      <div><strong>{control.name}</strong><p>{control.evidence}</p></div>
+                      <code>{control.id}</code>
+                    </article>
+                  ))}
+                </div>
+                <div className={`trust-integration-mode ${trust?.integration?.mode ?? "sandbox"}`}>
+                  <div><Link2 size={17} /><span><small>CASE MANAGEMENT ADAPTER</small><strong>{trust?.integration?.destination ?? "case-management-sandbox"}</strong></span></div>
+                  <p>{trust?.integration?.statement ?? "External writes remain blocked until a fixed enterprise endpoint is configured."}</p>
+                  <span>{trust?.integration?.mode ?? "sandbox"} mode</span>
+                </div>
+              </aside>
+            </div>
+
+            <div className="trust-operations-rail">
+              <div><Activity size={15} /><span><small>TRACE PROPAGATION</small><strong>{trust?.platform?.telemetry?.trace_propagation ?? "active"}</strong></span></div>
+              <div><Database size={15} /><span><small>DURABLE STATE</small><strong>{trust?.platform?.database ?? "sqlite"} + {trust?.platform?.migrations ?? "alembic"}</strong></span></div>
+              <div><TimerReset size={15} /><span><small>DELIVERY SLO</small><strong>{trust?.platform?.telemetry?.delivery_slo ?? "99% within 5 minutes"}</strong></span></div>
+              <div><ShieldCheck size={15} /><span><small>SUPPLY CHAIN</small><strong>SBOM · audit · container scan</strong></span></div>
+              <code>{currentTrustDelivery?.response_digest ? `response:${currentTrustDelivery.response_digest.slice(0, 16)}…` : "response evidence pending"}</code>
             </div>
           </section>
 

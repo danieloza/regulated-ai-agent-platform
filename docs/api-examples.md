@@ -767,3 +767,166 @@ curl -s -X POST http://127.0.0.1:8000/api/v1/security/attack-paths/simulate \
     "candidate_profile":"approval_bypass"
   }'
 ```
+
+## Enterprise Identity and Trust
+
+The browser-facing Trust Center uses `/api/trust/*` only to demonstrate the workflow without an external identity provider. Enterprise clients should use `/api/v1/trust/*`, where actor identity comes from the validated credential rather than the JSON body.
+
+OIDC requests require a signed JWT, tenant context, and an idempotency key for every mutation:
+
+```bash
+curl -s http://127.0.0.1:8000/api/v1/trust/overview \
+  -H "Authorization: Bearer $OPERATOR_OIDC_TOKEN" \
+  -H "X-Tenant-ID: demo"
+```
+
+```json
+{
+  "tenant_id": "demo",
+  "operating_mode": {
+    "identity": "oidc-compatible",
+    "authorization": "server-enforced",
+    "execution": "approval-bound"
+  },
+  "metrics": {
+    "workforce_identities": 2,
+    "aal2_coverage_percent": 100,
+    "maker_checker_percent": 100,
+    "verified_delivery_percent": 100,
+    "active_break_glass": 0
+  }
+}
+```
+
+Create an expiring approval for an exact regulated payload:
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/api/v1/trust/approvals \
+  -H "Authorization: Bearer $OPERATOR_OIDC_TOKEN" \
+  -H "X-Tenant-ID: demo" \
+  -H "Idempotency-Key: case-note-request-20260723-001" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "action":"case_note.create",
+    "resource":"customer/cus-1042/case-notes",
+    "payload":{
+      "customer_id":"cus-1042",
+      "note":"Customer requested a compliance review through the secure channel."
+    },
+    "correlation_id":"trace-case-note-20260723",
+    "expires_minutes":30
+  }'
+```
+
+```json
+{
+  "decision": {
+    "decision": "approval_required",
+    "reasons": ["independent_approval_required"],
+    "checks": {
+      "tenant_match": true,
+      "role_sufficient": true,
+      "assurance_sufficient": true
+    }
+  },
+  "approval": {
+    "id": "tappr_7a3c9d3f22a1",
+    "requester_subject": "alex.morgan",
+    "status": "pending",
+    "payload_digest": "9e78a758db72f41d8f5be289a8087c40fb1433cc6b60afabdfda41caa26bc43f",
+    "maker_checker": false
+  }
+}
+```
+
+The independent AAL2 approver must submit the same digest:
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/api/v1/trust/approvals/$APPROVAL_ID/decisions \
+  -H "Authorization: Bearer $APPROVER_OIDC_TOKEN" \
+  -H "X-Tenant-ID: demo" \
+  -H "Idempotency-Key: case-note-decision-20260723-001" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"decision\":\"approved\",
+    \"expected_payload_digest\":\"$PAYLOAD_DIGEST\",
+    \"comment\":\"The customer scope, case-note content and business justification were verified.\"
+  }"
+```
+
+Queue the approved payload for durable delivery:
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/api/v1/trust/approvals/$APPROVAL_ID/execute \
+  -H "Authorization: Bearer $OPERATOR_OIDC_TOKEN" \
+  -H "X-Tenant-ID: demo" \
+  -H "Idempotency-Key: case-note-queue-20260723-001" \
+  -H "Content-Type: application/json" \
+  -d "{\"expected_payload_digest\":\"$PAYLOAD_DIGEST\"}"
+```
+
+```json
+{
+  "approval": {"id": "tappr_7a3c9d3f22a1", "status": "execution_queued"},
+  "delivery": {
+    "id": "delivery_a804836028dc",
+    "status": "queued",
+    "mode": "sandbox",
+    "attempt_count": 0,
+    "payload_digest": "9e78a758db72f41d8f5be289a8087c40fb1433cc6b60afabdfda41caa26bc43f"
+  }
+}
+```
+
+An administrator or delivery workload dispatches the durable record:
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/api/v1/trust/deliveries/$DELIVERY_ID/dispatch \
+  -H "Authorization: Bearer $DELIVERY_WORKLOAD_KEY" \
+  -H "X-Tenant-ID: demo" \
+  -H "Idempotency-Key: case-note-dispatch-20260723-001"
+```
+
+In sandbox mode the response is verified without an external write. With `CASE_MANAGEMENT_API_URL` configured, the fixed-destination adapter sends `Idempotency-Key`, `X-Payload-Digest`, and an HMAC `X-Payload-Signature`; redirects are disabled and the response body is represented by a digest.
+
+```json
+{
+  "delivery": {
+    "id": "delivery_a804836028dc",
+    "status": "verified",
+    "mode": "sandbox",
+    "attempt_count": 1,
+    "response_digest": "64ea21e748913c1fc34d6545eaf13c8672b30833e50b01b8670ff84ad8a72d2f"
+  }
+}
+```
+
+## Operational Probes and Metrics
+
+Kubernetes uses separate liveness and dependency-aware readiness routes:
+
+```bash
+curl -s http://127.0.0.1:8000/api/health/live
+curl -s http://127.0.0.1:8000/api/health/ready
+```
+
+```json
+{
+  "status": "ready",
+  "checks": {
+    "database": true,
+    "schema_revision": {
+      "current": "48f2772be5c4",
+      "required": "48f2772be5c4",
+      "matched": true
+    },
+    "redis": {"mode": "redis", "connected": true, "url": "redis://redis:6379/0"}
+  }
+}
+```
+
+Prometheus scrapes per-replica HTTP counters and latency histograms from `/metrics`. Keep that route on an internal network or authenticated telemetry gateway in production.
+
+```bash
+curl -s http://127.0.0.1:8000/metrics | grep regulated_ai_http
+```

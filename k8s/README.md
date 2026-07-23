@@ -6,17 +6,27 @@ These manifests show a production-style deployment shape:
 - `redis`: shared rate-limit store for multiple backend pods.
 - `frontend`: nginx-served React build with `/api` proxied to the backend service.
 - `hpa`: backend autoscaling target.
-- `configmap` + `secret`: non-sensitive runtime config is split from `DATABASE_URL`.
+- `migration-job`: a bounded non-root Alembic migration that must complete before application rollout.
+- `configmap` + `secret`: non-sensitive runtime config is split from PostgreSQL, IAM, and integration secrets.
 - security contexts: app pods run as non-root users.
 
-Local cluster flow:
+These are deployment-shape manifests, not a secret-distribution system. Before applying them, replace the Secret placeholders through the target platform's external secret manager and configure the corporate OIDC issuer, audience, JWKS, group mapping, and PostgreSQL URL.
+
+Controlled cluster flow:
 
 ```powershell
 docker build -t regulated-ai-agent-platform-backend:latest .\backend
 docker build -t regulated-ai-agent-platform-frontend:latest .\frontend
-kubectl apply -f .\k8s
+kubectl apply -f .\k8s\namespace.yaml
+kubectl apply -f .\k8s\configmap.yaml -f .\k8s\secret.yaml
+kubectl apply -f .\k8s\redis.yaml
+kubectl apply -f .\k8s\migration-job.yaml
+kubectl -n regulated-ai wait --for=condition=complete job/backend-schema-migration --timeout=180s
+kubectl apply -f .\k8s\backend.yaml -f .\k8s\frontend.yaml -f .\k8s\hpa.yaml
 kubectl -n regulated-ai get pods,svc,hpa
 ```
+
+Use a unique migration Job name or delete the completed Job before applying a later migration revision. Production releases should use immutable image digests, a managed PostgreSQL service, managed Redis, network policy, TLS ingress, image-signature admission, centralized telemetry, and tested backup/restore.
 
 For minikube:
 

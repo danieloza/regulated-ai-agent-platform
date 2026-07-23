@@ -15,6 +15,8 @@ This project models a regulated AI assistant that can answer from business docum
 - Obsidian vault paths, Markdown notes, persisted sync previews, connector file lineage, and knowledge-graph relations.
 - Change-proposal evidence, source fingerprints, operator rationale, release-handoff manifests, and rollback contracts.
 - Security Twin scenarios, calculated attack paths, modeled blast radius, containment decisions, verification replays, and evidence digests.
+- OIDC claims, role/group mappings, assurance level, access decisions, payload-bound approvals, break-glass grants, and correlation IDs.
+- Durable integration deliveries, payload and response digests, retry state, and downstream signing material.
 
 ## Trust Boundaries
 
@@ -33,6 +35,9 @@ This project models a regulated AI assistant that can answer from business docum
 | Graph to operator | Persisted provenance | Inferred lexical relationships | Explicit authoritative/inferred semantics and accessible adjacency view |
 | Signal to change proposal | Human-authorized review workflow | Automated synthesis and incomplete evidence | Deterministic source rules, stable fingerprints, provenance, RBAC, substantive rationale, non-executing handoff |
 | Security scenario to containment | Human-authorized sandbox workflow | Candidate control failure and attack-path hypothesis | Deterministic graph, fixed scenario inventory, operator/approver separation, idempotency, replay verification, no runtime credentials |
+| Corporate identity to enterprise API | Trusted issuer, JWKS, tenant and group mappings | Bearer token and caller-supplied tenant | Signature, issuer, audience, expiry, algorithm, tenant, role, and assurance validation |
+| Approval to execution | Persisted approved payload | Mutated or replayed execution request | Expiry, maker-checker separation, canonical digest comparison, durable state transition |
+| Platform to case management | Fixed adapter and approved destination | Network failures and downstream response | HTTPS policy, HMAC digest signature, idempotency key, bounded timeout, no redirects, retry/dead-letter state |
 
 ## Attacker Goals
 
@@ -54,6 +59,9 @@ This project models a regulated AI assistant that can answer from business docum
 - Manipulate a source signal to create a misleading change proposal or treat acceptance as permission to deploy.
 - Exploit an overprivileged tool scope, forged approval, missing tenant check, or poisoned retrieval path to reach regulated assets.
 - Treat scenario-modeled blast-radius counts as discovered production exposure or use sandbox containment as production authorization.
+- Forge or replay an identity token, escalate a mapped group, cross a tenant boundary, or bypass MFA.
+- Approve one's own action, change a payload after review, replay delivery, or abuse emergency access.
+- Redirect the integration adapter, tamper with a downstream payload, or hide a failed delivery.
 
 ## Mitigations
 
@@ -86,19 +94,28 @@ This project models a regulated AI assistant that can answer from business docum
 - Containment requires a persisted simulation, operator-prepared plan, separate approver decision, and replay verification.
 - Security Twin containment is sandbox-only and cannot mutate IAM, policies, credentials, connectors, tools, or business systems.
 - Evidence export includes the attack path, control states, modeled blast radius, decision, verification, and SHA-256 integrity digest.
+- OIDC JWTs require a trusted asymmetric key, issuer, audience, expiry, issued-at, subject, tenant membership, and explicit role mapping; raw tokens are not persisted.
+- High-risk actions require AAL2, and the API—not the browser—evaluates tenant, role, and assurance.
+- Regulated approvals expire, prevent self-approval, and bind the reviewer decision and execution to the exact payload digest.
+- Break-glass access requires an independent AAL2 administrator, incident reference, narrow scope, and short TTL.
+- Integration deliveries persist state, preserve the approved payload, use idempotency and integrity headers, disable redirects, bound timeouts, and retain retry/dead-letter evidence.
+- Request and correlation IDs are returned and written to structured logs; Prometheus exposes per-route request and latency telemetry.
+- CI performs dependency review, Python and npm audits, CycloneDX SBOM generation, and a commit-pinned container vulnerability scan.
 
 ## Residual Risks
 
 - The current policy engine is deterministic and demo-oriented, not a complete enterprise DLP or IAM system.
 - Mock embeddings are used for portability; production retrieval would need a hardened vector store and ingestion pipeline.
-- Authentication is simplified for demo use; production should use OIDC/SAML, RBAC, tenant isolation, and session controls.
-- SQLite is suitable for local demo only; production should use PostgreSQL with migrations, backups, encryption, and least-privilege users.
+- Local UI routes use explicit demo actors. Production must expose the protected OIDC/API-key surface and integrate corporate group lifecycle, session revocation, access reviews, and privileged-access monitoring.
+- SQLite is suitable for local demo only; production should use PostgreSQL with the included Alembic baseline plus tested backups, encryption, rollback, and least-privilege users.
 - Prompt-injection detection is regression-tested but not exhaustive. A production system should combine deterministic controls, model evals, red-team cases, monitoring, and incident response.
 - Local claim extraction and contradiction detection are deterministic control-plane examples, not validated legal or clinical reasoning.
 - The local Secure Context credential and application-managed encryption key are not substitutes for corporate MFA, KMS/HSM-backed keys, rotation, or privileged-access monitoring.
 - The local connector scans a filesystem synchronously. Production requires a controlled content replica, inherited source ACLs, durable jobs, malware/DLP controls, and operational ownership.
 - Proposal confidence and expected risk reduction are decision-support estimates. A production release controller must independently validate source evidence, approvals, manifest integrity, canary gates, and rollback.
 - Security Twin inventory is scenario-modeled rather than discovered from live IAM and data catalogs. Production reachability requires authoritative identity, entitlement, connector, asset, and network integrations.
+- The included fixed-destination adapter demonstrates a real delivery contract but is not connected to an organization's case-management system by default. Production needs a managed worker, downstream reconciliation, and operational ownership.
+- Metrics are per-process and must be scraped across replicas; SLO targets are not proven until measured in the target environment.
 
 ## Security Regression Scope
 
@@ -116,3 +133,5 @@ The pytest suite and `backend/evals/security_cases.json` are intentionally part 
 - protected-context authentication, encryption boundary, secret rejection, single-use scope, and metadata-only audit evidence.
 - idempotent proposal detection, preserved terminal decisions, role-gated enterprise review, substantive rationale, and non-executing release handoffs.
 - deterministic attack-path blocking, scope-escalation blast-radius detection, cross-tenant isolation, approval-gated containment, replay proof, stable evidence digests, and enterprise RBAC/idempotency.
+- strict OIDC signature and claim validation, tenant and assurance checks, maker-checker separation, payload digest binding, approval expiry, and break-glass constraints.
+- durable delivery queueing, sandbox verification, idempotent replay, bounded retry/dead-letter transitions, readiness checks, and machine-readable metrics.

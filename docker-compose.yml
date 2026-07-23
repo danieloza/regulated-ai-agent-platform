@@ -40,6 +40,17 @@ services:
       POLICY_VERSION: ${POLICY_VERSION:-2026.07.10-default}
       ENTERPRISE_RESOURCE_TENANT: ${ENTERPRISE_RESOURCE_TENANT:-demo}
       ENTERPRISE_API_CREDENTIALS: ${ENTERPRISE_API_CREDENTIALS:-[]}
+      OIDC_ISSUER: ${OIDC_ISSUER:-}
+      OIDC_AUDIENCE: ${OIDC_AUDIENCE:-}
+      OIDC_JWKS_JSON: ${OIDC_JWKS_JSON:-}
+      OIDC_JWKS_URL: ${OIDC_JWKS_URL:-}
+      OIDC_ALLOWED_ALGORITHMS: ${OIDC_ALLOWED_ALGORITHMS:-RS256}
+      OIDC_GROUPS_CLAIM: ${OIDC_GROUPS_CLAIM:-groups}
+      OIDC_GROUP_ROLE_MAP: ${OIDC_GROUP_ROLE_MAP:-{}}
+      OIDC_ROLES_CLAIM: ${OIDC_ROLES_CLAIM:-roles}
+      OIDC_TENANT_CLAIM: ${OIDC_TENANT_CLAIM:-tenant_ids}
+      CASE_MANAGEMENT_API_URL: ${CASE_MANAGEMENT_API_URL:-}
+      CASE_MANAGEMENT_SIGNING_SECRET: ${CASE_MANAGEMENT_SIGNING_SECRET:-}
       SECURE_CONTEXT_MASTER_SECRET: ${SECURE_CONTEXT_MASTER_SECRET:-}
       SECURE_CONTEXT_PASSWORD_HASH: ${SECURE_CONTEXT_PASSWORD_HASH:-}
       OBSIDIAN_ALLOWED_ROOTS: ${OBSIDIAN_ALLOWED_ROOTS:-}
@@ -56,6 +67,18 @@ services:
       interval: 10s
       timeout: 5s
       retries: 6
+
+  migrate:
+    build:
+      context: ./backend
+    profiles: ["postgres"]
+    command: ["python", "-m", "alembic", "upgrade", "head"]
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://regulated_ai:${POSTGRES_PASSWORD:-dev-only-change-me}@postgres:5432/regulated_ai}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
 
   frontend:
     build:

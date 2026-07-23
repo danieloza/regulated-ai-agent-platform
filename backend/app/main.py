@@ -18,8 +18,9 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Upl
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, Response
-from pydantic import BaseModel, Field
-from sqlalchemy import JSON, DateTime, Float, Integer, String, Text, create_engine, select, update
+from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
+from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import JSON, DateTime, Float, Integer, String, Text, UniqueConstraint, create_engine, select, text, update
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -43,6 +44,13 @@ from app.services.obsidian_connector import (
     connector_security_mode,
     scan_obsidian_vault,
 )
+from app.services.trust_plane import (
+    ACTION_POLICIES,
+    canonical_digest,
+    dispatch_case_management,
+    evaluate_access,
+    integration_mode,
+)
 from app.services.workflow import WORKFLOW_NODES, run_workflow_trace
 
 
@@ -53,6 +61,7 @@ GOVERNANCE_TEMPLATE_PATH = ROOT / "assets" / "governance-registry-template.xlsx"
 DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{DB_PATH}")
 POLICY_VERSION = os.getenv("POLICY_VERSION", "2026.07.10-default")
+ALEMBIC_HEAD_REVISION = "48f2772be5c4"
 ALLOWED_ORIGINS = [origin.strip() for origin in os.getenv("ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",") if origin.strip()]
 
 connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
@@ -61,6 +70,16 @@ SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
 
 logger = logging.getLogger("regulated_ai_agent_platform")
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(message)s")
+HTTP_REQUESTS = Counter(
+    "regulated_ai_http_requests_total",
+    "HTTP requests handled by the regulated AI control plane.",
+    ["method", "route", "status"],
+)
+HTTP_DURATION = Histogram(
+    "regulated_ai_http_request_duration_seconds",
+    "HTTP request latency for the regulated AI control plane.",
+    ["method", "route"],
+)
 
 
 class Base(DeclarativeBase):
@@ -254,6 +273,85 @@ class EnterpriseOutboxEvent(Base):
     aggregate_id: Mapped[str] = mapped_column(String(120), index=True)
     payload_json: Mapped[dict] = mapped_column(JSON)
     status: Mapped[str] = mapped_column(String(40), default="pending", index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC), index=True)
+
+
+class IdentityAccessDecision(Base):
+    __tablename__ = "identity_access_decisions"
+
+    id: Mapped[str] = mapped_column(String(48), primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(String(120), index=True)
+    subject: Mapped[str] = mapped_column(String(160), index=True)
+    auth_method: Mapped[str] = mapped_column(String(40))
+    role: Mapped[str] = mapped_column(String(40), index=True)
+    assurance_level: Mapped[str] = mapped_column(String(40), index=True)
+    action: Mapped[str] = mapped_column(String(120), index=True)
+    resource: Mapped[str] = mapped_column(String(200))
+    decision: Mapped[str] = mapped_column(String(40), index=True)
+    reasons_json: Mapped[list] = mapped_column(JSON, default=list)
+    checks_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    payload_digest: Mapped[str] = mapped_column(String(64), index=True)
+    claims_digest: Mapped[str] = mapped_column(String(64))
+    correlation_id: Mapped[str] = mapped_column(String(64), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC), index=True)
+
+
+class TrustApproval(Base):
+    __tablename__ = "trust_approvals"
+
+    id: Mapped[str] = mapped_column(String(48), primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(String(120), index=True)
+    requester_subject: Mapped[str] = mapped_column(String(160), index=True)
+    approver_subject: Mapped[str | None] = mapped_column(String(160), nullable=True, index=True)
+    action: Mapped[str] = mapped_column(String(120), index=True)
+    resource: Mapped[str] = mapped_column(String(200))
+    payload_json: Mapped[dict] = mapped_column(JSON)
+    payload_digest: Mapped[str] = mapped_column(String(64), index=True)
+    status: Mapped[str] = mapped_column(String(40), default="pending", index=True)
+    required_assurance: Mapped[str] = mapped_column(String(40), default="aal2")
+    decision_comment: Mapped[str] = mapped_column(Text, default="")
+    correlation_id: Mapped[str] = mapped_column(String(64), index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC), index=True)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    executed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class IntegrationDelivery(Base):
+    __tablename__ = "integration_deliveries"
+    __table_args__ = (UniqueConstraint("approval_id", name="uq_integration_delivery_approval"),)
+
+    id: Mapped[str] = mapped_column(String(48), primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(String(120), index=True)
+    approval_id: Mapped[str] = mapped_column(String(48), index=True)
+    destination: Mapped[str] = mapped_column(String(200))
+    mode: Mapped[str] = mapped_column(String(40), index=True)
+    status: Mapped[str] = mapped_column(String(40), default="queued", index=True)
+    attempt_count: Mapped[int] = mapped_column(Integer, default=0)
+    max_attempts: Mapped[int] = mapped_column(Integer, default=3)
+    payload_json: Mapped[dict] = mapped_column(JSON)
+    payload_digest: Mapped[str] = mapped_column(String(64), index=True)
+    response_digest: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    error_summary: Mapped[str] = mapped_column(Text, default="")
+    correlation_id: Mapped[str] = mapped_column(String(64), index=True)
+    next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC), index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC), index=True)
+
+
+class BreakGlassGrant(Base):
+    __tablename__ = "break_glass_grants"
+
+    id: Mapped[str] = mapped_column(String(48), primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(String(120), index=True)
+    subject: Mapped[str] = mapped_column(String(160), index=True)
+    scope: Mapped[str] = mapped_column(String(160))
+    incident_id: Mapped[str] = mapped_column(String(80), index=True)
+    reason: Mapped[str] = mapped_column(Text)
+    approved_by: Mapped[str] = mapped_column(String(160))
+    status: Mapped[str] = mapped_column(String(40), default="active", index=True)
+    correlation_id: Mapped[str] = mapped_column(String(64), index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC), index=True)
 
 
@@ -549,6 +647,115 @@ class EnterpriseSecurityTwinSimulationRequest(BaseModel):
 class EnterpriseSecurityContainmentDecisionRequest(BaseModel):
     action: Literal["approve", "deny"]
     comment: str = Field(min_length=10, max_length=1000)
+
+
+class TrustActor(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    subject: str = Field(min_length=3, max_length=160)
+    role: Literal["viewer", "operator", "approver", "admin"]
+    tenant_id: str = Field(default="demo", min_length=2, max_length=120)
+    auth_method: Literal["oidc", "api_key"] = "oidc"
+    assurance_level: Literal["aal1", "aal2", "workload"] = "aal2"
+    groups: list[str] = Field(default_factory=list, max_length=30)
+
+
+class TrustAccessEvaluationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    actor: TrustActor
+    requested_tenant: str = Field(default="demo", min_length=2, max_length=120)
+    action: Literal["customer_summary.read", "case_note.create", "policy.release", "identity.break_glass"]
+    resource: str = Field(min_length=3, max_length=200)
+    payload: dict = Field(default_factory=dict)
+    correlation_id: str | None = Field(default=None, min_length=8, max_length=64)
+
+
+class EnterpriseTrustAccessEvaluationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    action: Literal["customer_summary.read", "case_note.create", "policy.release", "identity.break_glass"]
+    resource: str = Field(min_length=3, max_length=200)
+    payload: dict = Field(default_factory=dict)
+    correlation_id: str | None = Field(default=None, min_length=8, max_length=64)
+
+
+class TrustApprovalCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    actor: TrustActor
+    action: Literal["case_note.create", "policy.release"]
+    resource: str = Field(min_length=3, max_length=200)
+    payload: dict
+    correlation_id: str | None = Field(default=None, min_length=8, max_length=64)
+    expires_minutes: int = Field(default=30, ge=5, le=240)
+
+
+class EnterpriseTrustApprovalCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    action: Literal["case_note.create", "policy.release"]
+    resource: str = Field(min_length=3, max_length=200)
+    payload: dict
+    correlation_id: str | None = Field(default=None, min_length=8, max_length=64)
+    expires_minutes: int = Field(default=30, ge=5, le=240)
+
+
+class TrustApprovalDecisionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    actor: TrustActor
+    decision: Literal["approved", "denied"]
+    expected_payload_digest: str = Field(min_length=64, max_length=64)
+    comment: str = Field(min_length=10, max_length=1000)
+
+
+class EnterpriseTrustApprovalDecisionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    decision: Literal["approved", "denied"]
+    expected_payload_digest: str = Field(min_length=64, max_length=64)
+    comment: str = Field(min_length=10, max_length=1000)
+
+
+class TrustApprovalExecutionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    actor: TrustActor
+    expected_payload_digest: str = Field(min_length=64, max_length=64)
+
+
+class EnterpriseTrustApprovalExecutionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expected_payload_digest: str = Field(min_length=64, max_length=64)
+
+
+class TrustDeliveryDispatchRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    actor: TrustActor
+
+
+class BreakGlassRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    actor: TrustActor
+    subject: str = Field(min_length=3, max_length=160)
+    incident_id: str = Field(min_length=6, max_length=80)
+    scope: str = Field(min_length=3, max_length=160)
+    reason: str = Field(min_length=20, max_length=1000)
+    duration_minutes: int = Field(default=15, ge=5, le=30)
+
+
+class EnterpriseBreakGlassRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    subject: str = Field(min_length=3, max_length=160)
+    incident_id: str = Field(min_length=6, max_length=80)
+    scope: str = Field(min_length=3, max_length=160)
+    reason: str = Field(min_length=20, max_length=1000)
+    duration_minutes: int = Field(default=15, ge=5, le=30)
 
 
 class GovernanceApplyRequest(BaseModel):
@@ -917,23 +1124,31 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 async def structured_request_logging(request: Request, call_next):
     started = time.perf_counter()
     request_id = request.headers.get("x-request-id", f"req_{uuid4().hex[:10]}")
+    correlation_id = request.headers.get("x-correlation-id", request_id)
     request.state.request_id = request_id
+    request.state.correlation_id = correlation_id
     status_code = 500
     try:
         response = await call_next(request)
         status_code = response.status_code
         response.headers["x-request-id"] = request_id
+        response.headers["x-correlation-id"] = correlation_id
         return response
     finally:
+        duration_seconds = time.perf_counter() - started
+        route = getattr(request.scope.get("route"), "path", "__unmatched__")
+        HTTP_REQUESTS.labels(request.method, route, str(status_code)).inc()
+        HTTP_DURATION.labels(request.method, route).observe(duration_seconds)
         logger.info(
             json.dumps(
                 {
                     "event": "http_request",
                     "request_id": request_id,
+                    "correlation_id": correlation_id,
                     "method": request.method,
-                    "path": request.url.path,
+                    "route": route,
                     "status_code": status_code,
-                    "duration_ms": round((time.perf_counter() - started) * 1000, 2),
+                    "duration_ms": round(duration_seconds * 1000, 2),
                     "client": request.client.host if request.client else None,
                 }
             )
@@ -1135,6 +1350,9 @@ def source_bound_answer(question: str, citations: list[dict]) -> str:
 
 
 def seed() -> None:
+    if os.getenv("APP_ENV", "development").lower() == "production":
+        logger.info(json.dumps({"event": "demo_seed_skipped", "reason": "production_environment"}))
+        return
     Base.metadata.create_all(engine)
     with SessionLocal() as session:
         if not session.get(ManagedAgent, "agent_customer_copilot"):
@@ -1202,6 +1420,84 @@ def seed() -> None:
                     tool_name="create_case_note",
                     payload={"customer_id": "cus-2048", "note": "Verified KYC review outcome."},
                     status="pending",
+                )
+            )
+        trust_payload = {
+            "customer_id": "cus-1042",
+            "note": "KYC review completed; route the verified outcome to the controlled case system.",
+        }
+        trust_digest = canonical_digest(trust_payload)
+        if not session.get(IdentityAccessDecision, "iad_demo_case_note"):
+            seeded_evaluation = evaluate_access(
+                subject="alex.morgan",
+                role="operator",
+                tenant_id="demo",
+                requested_tenant="demo",
+                assurance_level="aal2",
+                groups=["AI-Operators", "Customer-Operations"],
+                action="case_note.create",
+                resource="customer/cus-1042/case-notes",
+                payload=trust_payload,
+            )
+            session.add(
+                IdentityAccessDecision(
+                    id="iad_demo_case_note",
+                    tenant_id="demo",
+                    subject="alex.morgan",
+                    auth_method="oidc",
+                    role="operator",
+                    assurance_level="aal2",
+                    action="case_note.create",
+                    resource="customer/cus-1042/case-notes",
+                    decision=seeded_evaluation["decision"],
+                    reasons_json=seeded_evaluation["reasons"],
+                    checks_json=seeded_evaluation["checks"],
+                    payload_digest=trust_digest,
+                    claims_digest=seeded_evaluation["claims_digest"],
+                    correlation_id="trace_trust_demo_2026",
+                )
+            )
+        if not session.get(TrustApproval, "tappr_demo_case_note"):
+            now = datetime.now(UTC)
+            session.add(
+                TrustApproval(
+                    id="tappr_demo_case_note",
+                    tenant_id="demo",
+                    requester_subject="alex.morgan",
+                    approver_subject="marta.chen",
+                    action="case_note.create",
+                    resource="customer/cus-1042/case-notes",
+                    payload_json=trust_payload,
+                    payload_digest=trust_digest,
+                    status="approved",
+                    required_assurance="aal2",
+                    decision_comment="Independent reviewer verified identity assurance, exact payload digest, business purpose, and destination.",
+                    correlation_id="trace_trust_demo_2026",
+                    expires_at=now + timedelta(minutes=30),
+                    decided_at=now,
+                )
+            )
+        if not session.get(IntegrationDelivery, "delivery_demo_case_note"):
+            session.add(
+                IntegrationDelivery(
+                    id="delivery_demo_case_note",
+                    tenant_id="demo",
+                    approval_id="tappr_demo_case_note",
+                    destination="case-management-sandbox",
+                    mode="sandbox",
+                    status="verified",
+                    attempt_count=1,
+                    payload_json=trust_payload,
+                    payload_digest=trust_digest,
+                    response_digest=canonical_digest(
+                        {
+                            "accepted": True,
+                            "external_write": False,
+                            "delivery_id": "delivery_demo_case_note",
+                            "payload_digest": trust_digest,
+                        }
+                    ),
+                    correlation_id="trace_trust_demo_2026",
                 )
             )
         if not session.get(KnowledgeSource, "ksrc_governance_policy"):
@@ -1358,6 +1654,42 @@ def seed() -> None:
 @app.get("/api/health")
 def health() -> dict:
     return {"status": "ok", "time": now_iso()}
+
+
+@app.get("/api/health/live", include_in_schema=False)
+def liveness() -> dict:
+    return {"status": "alive", "time": now_iso()}
+
+
+@app.get("/api/health/ready", include_in_schema=False)
+def readiness() -> Response:
+    checks: dict[str, dict | bool] = {"database": False, "redis": redis_status()}
+    try:
+        with engine.connect() as connection:
+            connection.execute(text("SELECT 1"))
+            if os.getenv("APP_ENV", "development").lower() == "production":
+                revision = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one_or_none()
+                checks["schema_revision"] = {
+                    "current": revision,
+                    "required": ALEMBIC_HEAD_REVISION,
+                    "matched": revision == ALEMBIC_HEAD_REVISION,
+                }
+                checks["database"] = revision == ALEMBIC_HEAD_REVISION
+            else:
+                checks["database"] = True
+    except Exception as exc:
+        checks["database_error"] = exc.__class__.__name__
+    redis_required = bool(os.getenv("REDIS_URL"))
+    ready = bool(checks["database"]) and (not redis_required or bool(checks["redis"]["connected"]))
+    return JSONResponse(
+        status_code=200 if ready else 503,
+        content={"status": "ready" if ready else "not_ready", "checks": checks, "time": now_iso()},
+    )
+
+
+@app.get("/metrics", include_in_schema=False)
+def prometheus_metrics() -> Response:
+    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
 def build_risk_runs(session: Session, limit: int = 50) -> list[dict]:
@@ -2849,6 +3181,611 @@ def transition_control_lifecycle(request: ControlLifecycleTransitionRequest) -> 
         return serialize_control_lifecycle(item)
 
 
+def trust_actor_from_principal(principal: EnterprisePrincipal) -> TrustActor:
+    return TrustActor(
+        subject=principal.subject,
+        role=principal.role,
+        tenant_id=principal.tenant_id,
+        auth_method=principal.auth_method,
+        assurance_level=principal.assurance_level,
+        groups=list(principal.groups),
+    )
+
+
+def trust_time(value: datetime) -> datetime:
+    return value if value.tzinfo else value.replace(tzinfo=UTC)
+
+
+def serialize_identity_decision(item: IdentityAccessDecision) -> dict:
+    return {
+        "id": item.id,
+        "tenant_id": item.tenant_id,
+        "subject": item.subject,
+        "auth_method": item.auth_method,
+        "role": item.role,
+        "assurance_level": item.assurance_level,
+        "action": item.action,
+        "resource": item.resource,
+        "decision": item.decision,
+        "reasons": item.reasons_json,
+        "checks": item.checks_json,
+        "payload_digest": item.payload_digest,
+        "claims_digest": item.claims_digest,
+        "correlation_id": item.correlation_id,
+        "created_at": item.created_at.isoformat(),
+    }
+
+
+def serialize_trust_approval(item: TrustApproval) -> dict:
+    return {
+        "id": item.id,
+        "tenant_id": item.tenant_id,
+        "requester_subject": item.requester_subject,
+        "approver_subject": item.approver_subject,
+        "action": item.action,
+        "resource": item.resource,
+        "payload": item.payload_json,
+        "payload_digest": item.payload_digest,
+        "status": item.status,
+        "required_assurance": item.required_assurance,
+        "decision_comment": item.decision_comment,
+        "correlation_id": item.correlation_id,
+        "expires_at": item.expires_at.isoformat(),
+        "created_at": item.created_at.isoformat(),
+        "decided_at": item.decided_at.isoformat() if item.decided_at else None,
+        "executed_at": item.executed_at.isoformat() if item.executed_at else None,
+        "maker_checker": bool(item.approver_subject and item.approver_subject != item.requester_subject),
+    }
+
+
+def serialize_integration_delivery(item: IntegrationDelivery) -> dict:
+    return {
+        "id": item.id,
+        "tenant_id": item.tenant_id,
+        "approval_id": item.approval_id,
+        "destination": item.destination,
+        "mode": item.mode,
+        "status": item.status,
+        "attempt_count": item.attempt_count,
+        "max_attempts": item.max_attempts,
+        "payload_digest": item.payload_digest,
+        "response_digest": item.response_digest,
+        "error_summary": item.error_summary,
+        "correlation_id": item.correlation_id,
+        "next_attempt_at": item.next_attempt_at.isoformat() if item.next_attempt_at else None,
+        "created_at": item.created_at.isoformat(),
+        "updated_at": item.updated_at.isoformat(),
+    }
+
+
+def serialize_break_glass_grant(item: BreakGlassGrant) -> dict:
+    status = item.status
+    if status == "active" and trust_time(item.expires_at) <= datetime.now(UTC):
+        status = "expired"
+    return {
+        "id": item.id,
+        "tenant_id": item.tenant_id,
+        "subject": item.subject,
+        "scope": item.scope,
+        "incident_id": item.incident_id,
+        "reason": item.reason,
+        "approved_by": item.approved_by,
+        "status": status,
+        "correlation_id": item.correlation_id,
+        "expires_at": item.expires_at.isoformat(),
+        "created_at": item.created_at.isoformat(),
+    }
+
+
+def trust_overview(tenant_id: str = "demo") -> dict:
+    with SessionLocal() as session:
+        decisions = session.scalars(
+            select(IdentityAccessDecision)
+            .where(IdentityAccessDecision.tenant_id == tenant_id)
+            .order_by(IdentityAccessDecision.created_at.desc())
+            .limit(12)
+        ).all()
+        approvals = session.scalars(
+            select(TrustApproval)
+            .where(TrustApproval.tenant_id == tenant_id)
+            .order_by(TrustApproval.created_at.desc())
+            .limit(12)
+        ).all()
+        deliveries = session.scalars(
+            select(IntegrationDelivery)
+            .where(IntegrationDelivery.tenant_id == tenant_id)
+            .order_by(IntegrationDelivery.created_at.desc())
+            .limit(12)
+        ).all()
+        grants = session.scalars(
+            select(BreakGlassGrant)
+            .where(BreakGlassGrant.tenant_id == tenant_id)
+            .order_by(BreakGlassGrant.created_at.desc())
+            .limit(10)
+        ).all()
+
+    separated = [item for item in approvals if item.approver_subject]
+    verified_deliveries = [item for item in deliveries if item.status == "verified"]
+    if os.getenv("APP_ENV", "development").lower() == "production":
+        observed: dict[str, dict] = {}
+        for item in decisions:
+            observed.setdefault(
+                item.subject,
+                {
+                    "subject": item.subject,
+                    "display_name": item.subject,
+                    "role": item.role,
+                    "tenant_id": item.tenant_id,
+                    "auth_method": item.auth_method,
+                    "assurance_level": item.assurance_level,
+                    "groups": [],
+                    "session_state": "observed",
+                },
+            )
+        identities = list(observed.values())
+    else:
+        identities = [
+            {
+                "subject": "alex.morgan",
+                "display_name": "Alex Morgan",
+                "role": "operator",
+                "tenant_id": tenant_id,
+                "auth_method": "oidc",
+                "assurance_level": "aal2",
+                "groups": ["AI-Operators", "Customer-Operations"],
+                "session_state": "verified",
+            },
+            {
+                "subject": "marta.chen",
+                "display_name": "Marta Chen",
+                "role": "approver",
+                "tenant_id": tenant_id,
+                "auth_method": "oidc",
+                "assurance_level": "aal2",
+                "groups": ["Compliance-Approvers"],
+                "session_state": "verified",
+            },
+            {
+                "subject": "integration.worker",
+                "display_name": "Case Delivery Worker",
+                "role": "admin",
+                "tenant_id": tenant_id,
+                "auth_method": "api_key",
+                "assurance_level": "workload",
+                "groups": ["Platform-Workloads"],
+                "session_state": "scoped",
+            },
+        ]
+    workforce_identities = [item for item in identities if item["auth_method"] == "oidc"]
+    aal2_coverage = (
+        round(100 * sum(item["assurance_level"] == "aal2" for item in workforce_identities) / len(workforce_identities))
+        if workforce_identities
+        else 0
+    )
+    return {
+        "generated_at": now_iso(),
+        "tenant_id": tenant_id,
+        "operating_mode": {
+            "identity": "oidc-compatible",
+            "authorization": "server-enforced",
+            "execution": "approval-bound",
+            "statement": "The browser displays identity context; the API remains the authorization boundary.",
+        },
+        "metrics": {
+            "workforce_identities": len(workforce_identities),
+            "aal2_coverage_percent": aal2_coverage,
+            "maker_checker_percent": round(
+                100 * sum(item.approver_subject != item.requester_subject for item in separated) / len(separated)
+            )
+            if separated
+            else 100,
+            "verified_delivery_percent": round(100 * len(verified_deliveries) / len(deliveries)) if deliveries else 100,
+            "active_break_glass": sum(item["status"] == "active" for item in map(serialize_break_glass_grant, grants)),
+        },
+        "identities": identities,
+        "controls": [
+            {"id": "IAM-01", "name": "OIDC signature and claim validation", "state": "enforced", "evidence": "issuer + audience + expiry + algorithm allowlist"},
+            {"id": "TENANT-01", "name": "Tenant-bound object authorization", "state": "enforced", "evidence": "identity tenant must match resource tenant"},
+            {"id": "MFA-02", "name": "Step-up assurance for high-risk actions", "state": "enforced", "evidence": "AAL2 required for regulated writes"},
+            {"id": "HITL-03", "name": "Maker-checker separation", "state": "enforced", "evidence": "requester cannot approve the same payload"},
+            {"id": "DIGEST-01", "name": "Payload-bound approval", "state": "enforced", "evidence": "SHA-256 digest revalidated before execution"},
+            {"id": "QUEUE-01", "name": "Durable delivery state machine", "state": "enforced", "evidence": "queued → retry_pending → verified/dead_letter"},
+        ],
+        "decisions": [serialize_identity_decision(item) for item in decisions],
+        "approvals": [serialize_trust_approval(item) for item in approvals],
+        "deliveries": [serialize_integration_delivery(item) for item in deliveries],
+        "break_glass": [serialize_break_glass_grant(item) for item in grants],
+        "integration": integration_mode(),
+        "platform": {
+            "database": engine.dialect.name,
+            "migrations": "alembic",
+            "correlation": "request → decision → approval → delivery",
+            "telemetry": {
+                "trace_propagation": "active",
+                "structured_logs": "active",
+                "delivery_slo": "99% verified within 5 minutes",
+                "dead_letter_alert": "configured contract",
+            },
+            "supply_chain": {
+                "lockfile": (ROOT.parent.parent / "frontend" / "package-lock.json").exists(),
+                "dependency_audit": "CI gate",
+                "sbom": "CycloneDX artifact",
+                "container_scan": "Trivy gate",
+            },
+        },
+    }
+
+
+def record_trust_access(request: TrustAccessEvaluationRequest) -> dict:
+    correlation_id = request.correlation_id or f"trace_{uuid4().hex[:16]}"
+    result = evaluate_access(
+        subject=request.actor.subject,
+        role=request.actor.role,
+        tenant_id=request.actor.tenant_id,
+        requested_tenant=request.requested_tenant,
+        assurance_level=request.actor.assurance_level,
+        groups=request.actor.groups,
+        action=request.action,
+        resource=request.resource,
+        payload=request.payload,
+    )
+    with SessionLocal() as session:
+        item = IdentityAccessDecision(
+            id=f"iad_{uuid4().hex[:12]}",
+            tenant_id=request.requested_tenant,
+            subject=request.actor.subject,
+            auth_method=request.actor.auth_method,
+            role=request.actor.role,
+            assurance_level=request.actor.assurance_level,
+            action=request.action,
+            resource=request.resource,
+            decision=result["decision"],
+            reasons_json=result["reasons"],
+            checks_json=result["checks"],
+            payload_digest=result["payload_digest"],
+            claims_digest=result["claims_digest"],
+            correlation_id=correlation_id,
+        )
+        session.add(item)
+        audit(
+            session,
+            correlation_id,
+            request.actor.subject,
+            "identity_access_evaluated",
+            result["decision"],
+            f"Identity access decision for {request.action}: {result['decision']}.",
+            {
+                "decision_id": item.id,
+                "action": request.action,
+                "resource": request.resource,
+                "tenant_id": request.requested_tenant,
+                "payload_digest": result["payload_digest"],
+                "claims_digest": result["claims_digest"],
+                "reasons": result["reasons"],
+                "correlation_id": correlation_id,
+            },
+        )
+        session.refresh(item)
+        return serialize_identity_decision(item)
+
+
+def create_trust_approval(request: TrustApprovalCreateRequest) -> dict:
+    decision = record_trust_access(
+        TrustAccessEvaluationRequest(
+            actor=request.actor,
+            requested_tenant=request.actor.tenant_id,
+            action=request.action,
+            resource=request.resource,
+            payload=request.payload,
+            correlation_id=request.correlation_id,
+        )
+    )
+    if decision["decision"] == "denied":
+        raise HTTPException(status_code=403, detail=f"Access denied: {', '.join(decision['reasons'])}.")
+    if decision["decision"] != "approval_required":
+        raise HTTPException(status_code=409, detail="This action does not require an approval workflow.")
+    now = datetime.now(UTC)
+    with SessionLocal() as session:
+        item = TrustApproval(
+            id=f"tappr_{uuid4().hex[:12]}",
+            tenant_id=request.actor.tenant_id,
+            requester_subject=request.actor.subject,
+            action=request.action,
+            resource=request.resource,
+            payload_json=request.payload,
+            payload_digest=decision["payload_digest"],
+            status="pending",
+            required_assurance=ACTION_POLICIES[request.action]["minimum_assurance"],
+            correlation_id=decision["correlation_id"],
+            expires_at=now + timedelta(minutes=request.expires_minutes),
+        )
+        session.add(item)
+        audit(
+            session,
+            item.correlation_id,
+            request.actor.subject,
+            "trust_approval_requested",
+            "approval_required",
+            "Created an expiring approval bound to the exact regulated payload.",
+            {
+                "approval_id": item.id,
+                "payload_digest": item.payload_digest,
+                "expires_at": item.expires_at.isoformat(),
+                "maker_checker_required": True,
+                "correlation_id": item.correlation_id,
+            },
+        )
+        session.refresh(item)
+        return {"decision": decision, "approval": serialize_trust_approval(item)}
+
+
+def decide_trust_approval(approval_id: str, request: TrustApprovalDecisionRequest) -> dict:
+    if request.actor.auth_method != "oidc" or request.actor.assurance_level != "aal2":
+        raise HTTPException(status_code=403, detail="Human OIDC identity with AAL2 assurance is required.")
+    if request.actor.role not in {"approver", "admin"}:
+        raise HTTPException(status_code=403, detail="Approver role is required.")
+    with SessionLocal() as session:
+        item = session.get(TrustApproval, approval_id)
+        if not item or item.tenant_id != request.actor.tenant_id:
+            raise HTTPException(status_code=404, detail="Trust approval not found.")
+        if item.status != "pending":
+            raise HTTPException(status_code=409, detail=f"Approval is already {item.status}.")
+        if trust_time(item.expires_at) <= datetime.now(UTC):
+            item.status = "expired"
+            session.commit()
+            raise HTTPException(status_code=409, detail="Approval has expired.")
+        if hmac.compare_digest(item.requester_subject, request.actor.subject):
+            raise HTTPException(status_code=409, detail="Maker-checker violation: requester cannot approve the same action.")
+        if not hmac.compare_digest(item.payload_digest, request.expected_payload_digest):
+            raise HTTPException(status_code=409, detail="Payload digest changed after the approval request.")
+        decision_result = session.execute(
+            update(TrustApproval)
+            .where(TrustApproval.id == approval_id, TrustApproval.status == "pending")
+            .values(
+                status=request.decision,
+                approver_subject=request.actor.subject,
+                decision_comment=redact_pii(request.comment),
+                decided_at=datetime.now(UTC),
+            )
+        )
+        if decision_result.rowcount != 1:
+            session.rollback()
+            raise HTTPException(status_code=409, detail="Approval was decided concurrently.")
+        session.refresh(item)
+        audit(
+            session,
+            item.correlation_id,
+            request.actor.subject,
+            "trust_approval_decided",
+            request.decision,
+            f"Independent reviewer recorded {request.decision} for the payload-bound approval.",
+            {
+                "approval_id": item.id,
+                "requester": item.requester_subject,
+                "approver": item.approver_subject,
+                "payload_digest": item.payload_digest,
+                "assurance_level": request.actor.assurance_level,
+                "correlation_id": item.correlation_id,
+            },
+        )
+        session.refresh(item)
+        return serialize_trust_approval(item)
+
+
+def execute_trust_approval(approval_id: str, request: TrustApprovalExecutionRequest) -> dict:
+    if request.actor.role not in {"operator", "approver", "admin"}:
+        raise HTTPException(status_code=403, detail="Operator role is required.")
+    with SessionLocal() as session:
+        item = session.get(TrustApproval, approval_id)
+        if not item or item.tenant_id != request.actor.tenant_id:
+            raise HTTPException(status_code=404, detail="Trust approval not found.")
+        if item.status == "execution_queued":
+            existing = session.scalar(select(IntegrationDelivery).where(IntegrationDelivery.approval_id == item.id))
+            if existing:
+                return {"approval": serialize_trust_approval(item), "delivery": serialize_integration_delivery(existing)}
+        if item.status != "approved":
+            raise HTTPException(status_code=409, detail="Only an approved request can enter execution.")
+        if trust_time(item.expires_at) <= datetime.now(UTC):
+            item.status = "expired"
+            session.commit()
+            raise HTTPException(status_code=409, detail="Approval expired before execution.")
+        if not hmac.compare_digest(item.payload_digest, request.expected_payload_digest):
+            raise HTTPException(status_code=409, detail="Execution payload does not match the approved digest.")
+        mode = integration_mode()
+        target_status = "execution_queued" if mode["mode"] != "blocked" else "execution_blocked"
+        execution_result = session.execute(
+            update(TrustApproval)
+            .where(TrustApproval.id == approval_id, TrustApproval.status == "approved")
+            .values(status=target_status)
+        )
+        if execution_result.rowcount != 1:
+            session.rollback()
+            raise HTTPException(status_code=409, detail="Approval execution was claimed concurrently.")
+        delivery = IntegrationDelivery(
+            id=f"delivery_{uuid4().hex[:12]}",
+            tenant_id=item.tenant_id,
+            approval_id=item.id,
+            destination=mode["destination"],
+            mode=mode["mode"],
+            status="queued" if mode["mode"] != "blocked" else "failed",
+            payload_json=item.payload_json,
+            payload_digest=item.payload_digest,
+            error_summary=mode["statement"] if mode["mode"] == "blocked" else "",
+            correlation_id=item.correlation_id,
+        )
+        session.add(delivery)
+        session.refresh(item)
+        audit(
+            session,
+            item.correlation_id,
+            request.actor.subject,
+            "integration_delivery_queued",
+            delivery.status,
+            "Created a durable, idempotent delivery from the exact approved payload.",
+            {
+                "approval_id": item.id,
+                "delivery_id": delivery.id,
+                "destination": delivery.destination,
+                "mode": delivery.mode,
+                "payload_digest": delivery.payload_digest,
+                "correlation_id": delivery.correlation_id,
+            },
+        )
+        session.refresh(item)
+        session.refresh(delivery)
+        return {"approval": serialize_trust_approval(item), "delivery": serialize_integration_delivery(delivery)}
+
+
+def dispatch_trust_delivery(delivery_id: str, actor: TrustActor) -> dict:
+    if actor.role != "admin":
+        raise HTTPException(status_code=403, detail="Platform administrator role is required to dispatch durable deliveries.")
+    with SessionLocal() as session:
+        item = session.get(IntegrationDelivery, delivery_id)
+        if not item or item.tenant_id != actor.tenant_id:
+            raise HTTPException(status_code=404, detail="Integration delivery not found.")
+        if item.status == "verified":
+            return serialize_integration_delivery(item)
+        if item.status not in {"queued", "retry_pending"}:
+            raise HTTPException(status_code=409, detail=f"Delivery cannot be dispatched from {item.status}.")
+        if item.next_attempt_at and trust_time(item.next_attempt_at) > datetime.now(UTC):
+            raise HTTPException(status_code=409, detail="Delivery retry is not due yet.")
+        payload = dict(item.payload_json)
+        payload_digest = item.payload_digest
+        attempt = item.attempt_count + 1
+
+    result = dispatch_case_management(delivery_id, payload, payload_digest)
+    with SessionLocal() as session:
+        item = session.get(IntegrationDelivery, delivery_id)
+        item.attempt_count = attempt
+        item.updated_at = datetime.now(UTC)
+        item.mode = result["mode"]
+        item.response_digest = result.get("response_digest")
+        item.error_summary = result.get("error", "")
+        item.next_attempt_at = None
+        if result["status"] == "retry_pending" and attempt >= item.max_attempts:
+            item.status = "dead_letter"
+        else:
+            item.status = result["status"]
+            if item.status == "retry_pending":
+                item.next_attempt_at = datetime.now(UTC) + timedelta(seconds=min(300, 15 * (2 ** (attempt - 1))))
+        approval = session.get(TrustApproval, item.approval_id)
+        if item.status == "verified" and approval:
+            approval.status = "executed"
+            approval.executed_at = datetime.now(UTC)
+        audit(
+            session,
+            item.correlation_id,
+            actor.subject,
+            "integration_delivery_dispatched",
+            item.status,
+            f"Durable integration delivery completed with state {item.status}.",
+            {
+                "delivery_id": item.id,
+                "approval_id": item.approval_id,
+                "attempt": item.attempt_count,
+                "mode": item.mode,
+                "payload_digest": item.payload_digest,
+                "response_digest": item.response_digest,
+                "correlation_id": item.correlation_id,
+            },
+        )
+        session.refresh(item)
+        return serialize_integration_delivery(item)
+
+
+def create_break_glass_grant(request: BreakGlassRequest) -> dict:
+    if request.actor.auth_method != "oidc" or request.actor.assurance_level != "aal2" or request.actor.role != "admin":
+        raise HTTPException(status_code=403, detail="AAL2 OIDC administrator identity is required.")
+    if hmac.compare_digest(request.actor.subject, request.subject):
+        raise HTTPException(status_code=409, detail="Break-glass access cannot be self-approved.")
+    correlation_id = f"trace_break_glass_{uuid4().hex[:10]}"
+    with SessionLocal() as session:
+        item = BreakGlassGrant(
+            id=f"breakglass_{uuid4().hex[:12]}",
+            tenant_id=request.actor.tenant_id,
+            subject=request.subject,
+            scope=request.scope,
+            incident_id=request.incident_id,
+            reason=redact_pii(request.reason),
+            approved_by=request.actor.subject,
+            status="active",
+            correlation_id=correlation_id,
+            expires_at=datetime.now(UTC) + timedelta(minutes=request.duration_minutes),
+        )
+        session.add(item)
+        audit(
+            session,
+            correlation_id,
+            request.actor.subject,
+            "break_glass_activated",
+            "approval_required",
+            "Activated a short-lived emergency grant linked to a security incident.",
+            {
+                "grant_id": item.id,
+                "subject": item.subject,
+                "scope": item.scope,
+                "incident_id": item.incident_id,
+                "expires_at": item.expires_at.isoformat(),
+                "self_approved": False,
+                "correlation_id": correlation_id,
+            },
+        )
+        session.refresh(item)
+        return serialize_break_glass_grant(item)
+
+
+def require_trust_demo_mode() -> None:
+    if os.getenv("APP_ENV", "development").lower() == "production":
+        raise HTTPException(status_code=404, detail="Local Identity and Trust demo routes are disabled.")
+
+
+@app.get("/api/trust/overview", tags=["Identity and Trust"])
+def get_trust_overview() -> dict:
+    require_trust_demo_mode()
+    return trust_overview()
+
+
+@app.post("/api/trust/access-decisions/evaluate", tags=["Identity and Trust"])
+def evaluate_trust_access(request: TrustAccessEvaluationRequest) -> dict:
+    require_trust_demo_mode()
+    return {"decision": record_trust_access(request), "overview": trust_overview(request.requested_tenant)}
+
+
+@app.post("/api/trust/approvals", tags=["Identity and Trust"])
+def request_trust_approval(request: TrustApprovalCreateRequest) -> dict:
+    require_trust_demo_mode()
+    result = create_trust_approval(request)
+    return {**result, "overview": trust_overview(request.actor.tenant_id)}
+
+
+@app.post("/api/trust/approvals/{approval_id}/decisions", tags=["Identity and Trust"])
+def decide_trust_approval_demo(approval_id: str, request: TrustApprovalDecisionRequest) -> dict:
+    require_trust_demo_mode()
+    approval = decide_trust_approval(approval_id, request)
+    return {"approval": approval, "overview": trust_overview(request.actor.tenant_id)}
+
+
+@app.post("/api/trust/approvals/{approval_id}/execute", tags=["Identity and Trust"])
+def execute_trust_approval_demo(approval_id: str, request: TrustApprovalExecutionRequest) -> dict:
+    require_trust_demo_mode()
+    result = execute_trust_approval(approval_id, request)
+    return {**result, "overview": trust_overview(request.actor.tenant_id)}
+
+
+@app.post("/api/trust/deliveries/{delivery_id}/dispatch", tags=["Identity and Trust"])
+def dispatch_trust_delivery_demo(delivery_id: str, request: TrustDeliveryDispatchRequest) -> dict:
+    require_trust_demo_mode()
+    delivery = dispatch_trust_delivery(delivery_id, request.actor)
+    return {"delivery": delivery, "overview": trust_overview(request.actor.tenant_id)}
+
+
+@app.post("/api/trust/break-glass", tags=["Identity and Trust"])
+def activate_break_glass_demo(request: BreakGlassRequest) -> dict:
+    require_trust_demo_mode()
+    grant = create_break_glass_grant(request)
+    return {"grant": grant, "overview": trust_overview(request.actor.tenant_id)}
+
+
 def ensure_enterprise_resource_tenant(principal: EnterprisePrincipal) -> None:
     resource_tenant = os.getenv("ENTERPRISE_RESOURCE_TENANT", "demo")
     if principal.tenant_id != resource_tenant:
@@ -2903,7 +3840,7 @@ def idempotent_enterprise_mutation(
 
 @app.get("/api/v1/health", tags=["Enterprise API"])
 def enterprise_health() -> dict:
-    return {"status": "ok", "api_version": "v1", "authentication": "api-key", "time": now_iso()}
+    return {"status": "ok", "api_version": "v1", "authentication": ["oidc", "api-key"], "time": now_iso()}
 
 
 @app.get("/api/v1/capabilities", tags=["Enterprise API"])
@@ -2912,10 +3849,185 @@ def enterprise_capabilities(principal: EnterprisePrincipal = Depends(require_rol
     return {
         "api_version": "v1",
         "tenant_id": principal.tenant_id,
-        "principal": {"subject": principal.subject, "role": principal.role, "key_fingerprint": principal.key_fingerprint},
-        "controls": ["rbac", "tenant-boundary", "idempotency", "pagination", "outbox", "audit-attribution", "knowledge-release-gates", "connector-path-allowlist", "persisted-sync-preview", "human-authorized-change-proposals", "deterministic-attack-paths", "human-approved-sandbox-containment", "containment-verification"],
-        "resources": ["change-proposals", "security-attack-paths", "security-containments", "control-lifecycles", "data-subject-requests", "knowledge-sources", "knowledge-claims", "knowledge-changes", "knowledge-releases", "knowledge-connectors", "knowledge-graph", "audit-events", "outbox-events"],
+        "principal": {
+            "subject": principal.subject,
+            "role": principal.role,
+            "auth_method": principal.auth_method,
+            "assurance_level": principal.assurance_level,
+            "credential_fingerprint": principal.key_fingerprint,
+        },
+        "controls": ["oidc-jwt-validation", "group-role-mapping", "mfa-assurance", "maker-checker", "payload-bound-approval", "rbac", "tenant-boundary", "idempotency", "pagination", "outbox", "durable-delivery", "audit-attribution", "knowledge-release-gates", "connector-path-allowlist", "persisted-sync-preview", "human-authorized-change-proposals", "deterministic-attack-paths", "human-approved-sandbox-containment", "containment-verification"],
+        "resources": ["trust-access-decisions", "trust-approvals", "integration-deliveries", "break-glass-grants", "change-proposals", "security-attack-paths", "security-containments", "control-lifecycles", "data-subject-requests", "knowledge-sources", "knowledge-claims", "knowledge-changes", "knowledge-releases", "knowledge-connectors", "knowledge-graph", "audit-events", "outbox-events"],
     }
+
+
+@app.get("/api/v1/trust/overview", tags=["Enterprise Identity and Trust"])
+def enterprise_trust_overview(principal: EnterprisePrincipal = Depends(require_role("viewer"))) -> dict:
+    ensure_enterprise_resource_tenant(principal)
+    return trust_overview(principal.tenant_id)
+
+
+@app.post("/api/v1/trust/access-decisions/evaluate", tags=["Enterprise Identity and Trust"])
+def enterprise_evaluate_trust_access(
+    request: EnterpriseTrustAccessEvaluationRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    principal: EnterprisePrincipal = Depends(require_role("viewer")),
+) -> dict:
+    ensure_enterprise_resource_tenant(principal)
+    body = request.model_dump()
+    actor = trust_actor_from_principal(principal)
+    local_request = TrustAccessEvaluationRequest(
+        actor=actor,
+        requested_tenant=principal.tenant_id,
+        **body,
+    )
+    return idempotent_enterprise_mutation(
+        principal,
+        "/api/v1/trust/access-decisions/evaluate",
+        idempotency_key,
+        body,
+        lambda: {"decision": record_trust_access(local_request)},
+        request.resource,
+        "enterprise.trust.access-evaluated",
+        lambda result: {
+            "decision_id": result["decision"]["id"],
+            "decision": result["decision"]["decision"],
+            "action": result["decision"]["action"],
+            "payload_digest": result["decision"]["payload_digest"],
+        },
+    )
+
+
+@app.post("/api/v1/trust/approvals", tags=["Enterprise Identity and Trust"])
+def enterprise_request_trust_approval(
+    request: EnterpriseTrustApprovalCreateRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    principal: EnterprisePrincipal = Depends(require_role("operator")),
+) -> dict:
+    ensure_enterprise_resource_tenant(principal)
+    body = request.model_dump()
+    local_request = TrustApprovalCreateRequest(actor=trust_actor_from_principal(principal), **body)
+    return idempotent_enterprise_mutation(
+        principal,
+        "/api/v1/trust/approvals",
+        idempotency_key,
+        body,
+        lambda: create_trust_approval(local_request),
+        request.resource,
+        "enterprise.trust.approval-requested",
+        lambda result: {
+            "approval_id": result["approval"]["id"],
+            "requester": result["approval"]["requester_subject"],
+            "action": result["approval"]["action"],
+            "payload_digest": result["approval"]["payload_digest"],
+        },
+    )
+
+
+@app.post("/api/v1/trust/approvals/{approval_id}/decisions", tags=["Enterprise Identity and Trust"])
+def enterprise_decide_trust_approval(
+    approval_id: str,
+    request: EnterpriseTrustApprovalDecisionRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    principal: EnterprisePrincipal = Depends(require_role("approver")),
+) -> dict:
+    ensure_enterprise_resource_tenant(principal)
+    body = request.model_dump()
+    local_request = TrustApprovalDecisionRequest(actor=trust_actor_from_principal(principal), **body)
+    return idempotent_enterprise_mutation(
+        principal,
+        f"/api/v1/trust/approvals/{approval_id}/decisions",
+        idempotency_key,
+        body,
+        lambda: {"approval": decide_trust_approval(approval_id, local_request)},
+        approval_id,
+        "enterprise.trust.approval-decided",
+        lambda result: {
+            "approval_id": result["approval"]["id"],
+            "status": result["approval"]["status"],
+            "maker_checker": result["approval"]["maker_checker"],
+            "payload_digest": result["approval"]["payload_digest"],
+        },
+    )
+
+
+@app.post("/api/v1/trust/approvals/{approval_id}/execute", tags=["Enterprise Identity and Trust"])
+def enterprise_execute_trust_approval(
+    approval_id: str,
+    request: EnterpriseTrustApprovalExecutionRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    principal: EnterprisePrincipal = Depends(require_role("operator")),
+) -> dict:
+    ensure_enterprise_resource_tenant(principal)
+    body = request.model_dump()
+    local_request = TrustApprovalExecutionRequest(actor=trust_actor_from_principal(principal), **body)
+    return idempotent_enterprise_mutation(
+        principal,
+        f"/api/v1/trust/approvals/{approval_id}/execute",
+        idempotency_key,
+        body,
+        lambda: execute_trust_approval(approval_id, local_request),
+        approval_id,
+        "enterprise.trust.delivery-queued",
+        lambda result: {
+            "approval_id": result["approval"]["id"],
+            "delivery_id": result["delivery"]["id"],
+            "status": result["delivery"]["status"],
+            "payload_digest": result["delivery"]["payload_digest"],
+        },
+    )
+
+
+@app.post("/api/v1/trust/deliveries/{delivery_id}/dispatch", tags=["Enterprise Identity and Trust"])
+def enterprise_dispatch_trust_delivery(
+    delivery_id: str,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    principal: EnterprisePrincipal = Depends(require_role("admin")),
+) -> dict:
+    ensure_enterprise_resource_tenant(principal)
+    actor = trust_actor_from_principal(principal)
+    return idempotent_enterprise_mutation(
+        principal,
+        f"/api/v1/trust/deliveries/{delivery_id}/dispatch",
+        idempotency_key,
+        {},
+        lambda: {"delivery": dispatch_trust_delivery(delivery_id, actor)},
+        delivery_id,
+        "enterprise.trust.delivery-dispatched",
+        lambda result: {
+            "delivery_id": result["delivery"]["id"],
+            "status": result["delivery"]["status"],
+            "attempt_count": result["delivery"]["attempt_count"],
+            "response_digest": result["delivery"]["response_digest"],
+        },
+    )
+
+
+@app.post("/api/v1/trust/break-glass", tags=["Enterprise Identity and Trust"])
+def enterprise_activate_break_glass(
+    request: EnterpriseBreakGlassRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    principal: EnterprisePrincipal = Depends(require_role("admin")),
+) -> dict:
+    ensure_enterprise_resource_tenant(principal)
+    body = request.model_dump()
+    local_request = BreakGlassRequest(actor=trust_actor_from_principal(principal), **body)
+    return idempotent_enterprise_mutation(
+        principal,
+        "/api/v1/trust/break-glass",
+        idempotency_key,
+        body,
+        lambda: {"grant": create_break_glass_grant(local_request)},
+        request.subject,
+        "enterprise.trust.break-glass-activated",
+        lambda result: {
+            "grant_id": result["grant"]["id"],
+            "subject": result["grant"]["subject"],
+            "scope": result["grant"]["scope"],
+            "incident_id": result["grant"]["incident_id"],
+            "expires_at": result["grant"]["expires_at"],
+        },
+    )
 
 
 @app.get("/api/v1/change-proposals", tags=["Enterprise Change Governance"])

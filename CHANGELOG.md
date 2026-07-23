@@ -6,6 +6,12 @@ This file records material platform changes for operators, reviewers, and integr
 
 ### Added
 
+- Enterprise Identity & Trust Plane with strict OIDC JWT validation, issuer/audience/signing-key enforcement, tenant and group-to-role mapping, AAL2 step-up, and scoped workload credentials.
+- Server-enforced access decisions, expiring payload-bound approvals, maker-checker separation, incident-scoped break-glass grants, and a premium operator evidence view.
+- Durable approved-delivery state machine with a fixed case-management adapter, idempotency and HMAC integrity headers, bounded timeouts, retry/dead-letter evidence, and deterministic non-writing sandbox verification.
+- PostgreSQL deployment path with an Alembic baseline, Compose migration service, and a non-root Kubernetes migration Job.
+- Correlation-aware structured logs, dependency-aware readiness, separate liveness, and Prometheus request/latency metrics.
+- Supply-chain workflow with dependency review, Python and npm audits, CycloneDX SBOM artifacts, commit-pinned container scanning, and Dependabot configuration.
 - Governed Change Proposal Inbox for converting policy replay, knowledge contradiction, security-eval, and approval signals into persistent proposals with explicit ownership, evidence, evaluation, approval, rollout, and rollback contracts.
 - Agent Security Twin for deterministic attack-path reconstruction, modeled blast-radius comparison, approval-gated sandbox containment, verification replay, and integrity-digested evidence export.
 - Enterprise API resources for tenant-bound change proposals and Security Twin workflows with RBAC, idempotent mutations, actor attribution, and integration outbox events.
@@ -13,20 +19,30 @@ This file records material platform changes for operators, reviewers, and integr
 
 ### Security
 
+- OIDC tokens fail closed on invalid signature, algorithm, issuer, audience, expiry, tenant, or missing role mapping; raw tokens are fingerprinted and not persisted.
+- Regulated writes require AAL2, independent approval, an unmodified payload digest, and a durable execution transition.
+- Break-glass access is short-lived, incident-bound, scope-limited, audited, and cannot be self-approved.
+- External delivery is disabled by default and cannot use caller-controlled destinations or redirects.
 - Containment plans remain non-executing until an authorized approval is recorded.
 - Security Twin evidence binds simulations, approvals, replay verification, and export integrity to an auditable workflow.
 - Candidate changes expose scope and blast-radius differences before release handoff.
 
 ### Documentation
 
+- Added architecture decisions for enterprise identity/trust and durable approved delivery.
+- Added OIDC, maker-checker, delivery, operational probe, migration, observability, and supply-chain guidance.
+- Extended the guided client and HR presentation with identity architecture and payload-bound execution evidence.
 - Added architecture decisions for governed change proposals and the Agent Security Twin.
 - Extended API examples, operational guidance, production limitations, threat modeling, screenshots, and demo media for the new controls.
 
 ### Validation
 
-- Backend test suite: 48 tests passed.
+- Backend test suite: 55 tests passed.
 - Frontend production build completed successfully.
 - Docker Compose configuration validated successfully.
+- Alembic upgraded a fresh database to revision `48f2772be5c4 (head)` with no model/schema drift.
+- Project-scoped Python dependency audit and npm audit reported no known vulnerabilities; backend and frontend CycloneDX generation completed.
+- Browser validation completed at desktop, tablet, and mobile widths with the end-to-end maker-checker and verified-delivery workflow; no console warnings or errors were present.
 
 ## Release note policy
 

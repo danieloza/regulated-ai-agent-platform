@@ -6,7 +6,8 @@ This repository is designed as a production-shaped portfolio project, not a drop
 
 - SQLite is the default database so the project runs locally without infrastructure.
 - Embeddings are deterministic/mock-style for portability and repeatable tests.
-- Authentication is simplified through demo user identifiers.
+- The local operator workflow includes explicit demo actors; the protected `/api/v1` boundary supports strict OIDC JWT validation and scoped workload API keys.
+- The React console does not acquire corporate tokens or create an enterprise session. A deployed operator UI still needs the organization's authorization-code/PKCE or backend-for-frontend login pattern; actor-supplied Trust demo routes fail closed when `APP_ENV=production`.
 - The policy engine is deterministic and intentionally readable.
 - The dashboard is an operator demo console, not a full multi-tenant admin product.
 - The governed knowledge compiler uses deterministic local claim extraction and conservative contradiction rules rather than an evaluated domain model.
@@ -15,18 +16,20 @@ This repository is designed as a production-shaped portfolio project, not a drop
 - Change proposals are synthesized from deterministic project signals; confidence and expected-risk-reduction values are illustrative decision-support metadata.
 - Security Twin attack paths and blast-radius counts come from deterministic scenario inventory; they do not discover live IAM, network, or data-catalog exposure.
 - Kubernetes manifests show deployment patterns, probes, limits, ConfigMap/Secret split, and non-root containers, but they are not a complete platform baseline.
+- The case-management adapter is deterministic and local until a fixed enterprise endpoint and signing secret are configured.
+- Prometheus metrics and structured correlation logs are available, but no organization-specific dashboards, paging rules, or validated SLO history are bundled.
 
 ## Production Requirements
 
-- Replace SQLite with PostgreSQL, migrations, backups, point-in-time recovery, and least-privilege database roles.
+- Replace SQLite with PostgreSQL, backups, point-in-time recovery, and least-privilege database roles; apply the included Alembic migrations through a controlled release gate.
 - Use managed Redis or a highly available Redis deployment for distributed rate limits.
-- Add real authentication and authorization: OIDC/SAML, RBAC/ABAC, tenant boundaries, service accounts, and short-lived credentials.
+- Connect the OIDC validation boundary to the corporate identity provider, group governance, access reviews, MFA policy, session revocation, and privileged-access process.
 - Move all secrets to a secret manager or platform-native secret store, with rotation and audit.
-- Add complete request tracing, metrics, dashboards, alerting, and retention policies.
+- Connect correlation logs and Prometheus metrics to centralized tracing, dashboards, paging rules, and retention policies.
 - Add model/provider governance if using external LLM APIs: data retention review, regional controls, vendor risk, and fallback behavior.
 - Replace mock embeddings with a hardened retrieval pipeline, ingestion validation, document provenance, access control per document, and deletion workflows.
-- Add database migrations through Alembic or equivalent.
-- Add container image scanning, dependency scanning, SBOM generation, and signed images.
+- Exercise Alembic migrations on production-like data and establish backup, compatibility, rollback, and ownership controls.
+- Enforce the included dependency audits, CycloneDX SBOM, dependency review, and container scan; add image signing, provenance, and admission verification in the release platform.
 - Add network policies, ingress TLS, WAF/API gateway controls, and environment-specific CORS.
 - Add load, concurrency, and chaos testing for approval flows, rate limits, and ledger updates.
 - Replace local knowledge compilation with an approved asynchronous extraction service, domain evaluation sets, expert review SLAs, and source-repository ACL synchronization.
@@ -38,6 +41,8 @@ This repository is designed as a production-shaped portfolio project, not a drop
 - Calibrate proposal ranking and risk-reduction estimates against representative operating data before using them for prioritization.
 - Integrate Security Twin inventory with authoritative IAM entitlements, asset ownership, tenant metadata, connector scopes, data classification, and network-policy sources before using it for production exposure decisions.
 - Keep production containment in a separate, human-authorized SOAR or release workflow with narrow service identities, fixed destinations, independent validation, rollback, and post-change verification.
+- Run integration delivery through a managed queue/worker, connect the fixed adapter to an approved case-management sandbox, and establish downstream idempotency, reconciliation, retry, dead-letter, and incident ownership.
+- Keep local `/api/trust/*` actor-supplied routes outside production ingress; production authorization must use `/api/v1/trust/*`.
 
 ## Intentional Scope
 
