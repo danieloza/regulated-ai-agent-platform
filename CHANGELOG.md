@@ -4,6 +4,10 @@ This file records material platform changes for operators, reviewers, and integr
 
 ## Unreleased
 
+No unreleased material changes.
+
+## [0.1.0] - 2026-07-24
+
 ### Added
 
 - Enterprise Identity & Trust Plane with strict OIDC JWT validation, issuer/audience/signing-key enforcement, tenant and group-to-role mapping, AAL2 step-up, and scoped workload credentials.
@@ -16,6 +20,19 @@ This file records material platform changes for operators, reviewers, and integr
 - Agent Security Twin for deterministic attack-path reconstruction, modeled blast-radius comparison, approval-gated sandbox containment, verification replay, and integrity-digested evidence export.
 - Enterprise API resources for tenant-bound change proposals and Security Twin workflows with RBAC, idempotent mutations, actor attribution, and integration outbox events.
 - Operator views and guided-demo steps for reviewing change proposals and demonstrating security containment.
+- Tag-driven backend and frontend OCI image publication to GitHub Container Registry with embedded SBOMs, maximum-mode BuildKit provenance, and GitHub OIDC-signed build attestations.
+
+### Changed
+
+- GitHub Actions runners were upgraded to their current supported major versions and pinned to reviewed full commit SHAs.
+- React and React DOM were updated from `19.2.7` to `19.2.8`.
+- Kubernetes deployment examples now consume versioned `0.1.0` GHCR images instead of mutable local `latest` tags.
+- Dependabot now groups compatible React runtime updates and defers unreviewed major upgrades for TypeScript, the Vite React plugin, and the icon library.
+
+### Fixed
+
+- Corrected cross-repository action pinning that referenced the checkout SHA for artifact upload and the artifact-upload SHA for dependency review.
+- Added bounded job timeouts, cancellation of superseded CI runs, and explicit read-only repository permissions for validation workflows.
 
 ### Security
 
@@ -23,6 +40,7 @@ This file records material platform changes for operators, reviewers, and integr
 - Regulated writes require AAL2, independent approval, an unmodified payload digest, and a durable execution transition.
 - Break-glass access is short-lived, incident-bound, scope-limited, audited, and cannot be self-approved.
 - External delivery is disabled by default and cannot use caller-controlled destinations or redirects.
+- Production startup requires an explicit host allowlist, disables interactive OpenAPI surfaces, and uses a non-credentialed least-privilege CORS policy.
 - Containment plans remain non-executing until an authorized approval is recorded.
 - Security Twin evidence binds simulations, approvals, replay verification, and export integrity to an auditable workflow.
 - Candidate changes expose scope and blast-radius differences before release handoff.
@@ -37,7 +55,7 @@ This file records material platform changes for operators, reviewers, and integr
 
 ### Validation
 
-- Backend test suite: 55 tests passed.
+- Backend test suite: 58 tests passed.
 - Frontend production build completed successfully.
 - Docker Compose configuration validated successfully.
 - Alembic upgraded a fresh database to revision `48f2772be5c4 (head)` with no model/schema drift.
@@ -55,3 +73,6 @@ Every material platform patch should:
 5. Avoid release claims that are not supported by completed tests or deployment evidence.
 
 Small refactors, formatting-only changes, and generated artifacts do not require individual entries unless they affect operators, security posture, compatibility, or deployment behavior.
+
+[Unreleased]: https://github.com/danieloza/regulated-ai-agent-platform/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/danieloza/regulated-ai-agent-platform/releases/tag/v0.1.0

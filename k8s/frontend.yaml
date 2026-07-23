@@ -19,7 +19,7 @@ spec:
         runAsGroup: 101
       containers:
         - name: frontend
-          image: regulated-ai-agent-platform-frontend:latest
+          image: ghcr.io/danieloza/regulated-ai-agent-platform-frontend:0.1.0
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080

@@ -72,6 +72,15 @@ The goal is to demonstrate the engineering layer around AI agents: RAG, governan
 
 Python, FastAPI, SQLAlchemy, Pydantic, PostgreSQL/SQLite, Alembic, LangGraph, Redis, Prometheus, deterministic mock embeddings, React, Vite, lucide-react, Docker, Kubernetes, pytest.
 
+## Release Artifacts
+
+Tagged releases publish separate backend and frontend OCI images to GitHub Container Registry. The release workflow embeds SBOM and maximum-mode BuildKit provenance in each image and adds a GitHub OIDC-signed build attestation. Kubernetes examples consume versioned image tags; company rollouts should resolve them to immutable digests and enforce attestation verification at admission.
+
+```text
+ghcr.io/danieloza/regulated-ai-agent-platform-backend:0.1.0
+ghcr.io/danieloza/regulated-ai-agent-platform-frontend:0.1.0
+```
+
 ## Enterprise API v1
 
 The versioned `/api/v1` surface is separate from the local/demo endpoints used by the operator UI. It adds:

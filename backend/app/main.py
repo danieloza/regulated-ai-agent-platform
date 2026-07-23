@@ -16,6 +16,7 @@ from uuid import uuid4
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, Response
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
@@ -62,7 +63,14 @@ DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{DB_PATH}")
 POLICY_VERSION = os.getenv("POLICY_VERSION", "2026.07.10-default")
 ALEMBIC_HEAD_REVISION = "48f2772be5c4"
+APP_ENV = os.getenv("APP_ENV", "development").casefold()
+IS_PRODUCTION = APP_ENV in {"production", "prod"}
 ALLOWED_ORIGINS = [origin.strip() for origin in os.getenv("ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",") if origin.strip()]
+ALLOWED_HOSTS = [host.strip() for host in os.getenv("ALLOWED_HOSTS", "*" if not IS_PRODUCTION else "").split(",") if host.strip()]
+if IS_PRODUCTION and (not ALLOWED_ORIGINS or "*" in ALLOWED_ORIGINS):
+    raise RuntimeError("ALLOWED_ORIGINS must contain an explicit origin allowlist in production.")
+if IS_PRODUCTION and (not ALLOWED_HOSTS or "*" in ALLOWED_HOSTS):
+    raise RuntimeError("ALLOWED_HOSTS must contain an explicit host allowlist in production.")
 
 connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
 engine = create_engine(DATABASE_URL, connect_args=connect_args)
@@ -1079,13 +1087,22 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title="Regulated AI Agent Platform API", version="0.1.0", lifespan=lifespan)
+app = FastAPI(
+    title="Regulated AI Agent Platform API",
+    version="0.1.0",
+    lifespan=lifespan,
+    docs_url=None if IS_PRODUCTION else "/docs",
+    redoc_url=None if IS_PRODUCTION else "/redoc",
+    openapi_url=None if IS_PRODUCTION else "/openapi.json",
+)
+if IS_PRODUCTION:
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=ALLOWED_HOSTS)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "Idempotency-Key", "X-Tenant-ID", "X-Requested-With"],
 )
 
 

@@ -36,6 +36,7 @@ services:
       DATABASE_URL: ${DATABASE_URL:-sqlite:////app/app/data/regulated_ai_agent.db}
       REDIS_URL: redis://redis:6379/0
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-*}
       APP_ENV: ${APP_ENV:-development}
       POLICY_VERSION: ${POLICY_VERSION:-2026.07.10-default}
       ENTERPRISE_RESOURCE_TENANT: ${ENTERPRISE_RESOURCE_TENANT:-demo}

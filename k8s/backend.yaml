@@ -20,7 +20,7 @@ spec:
         fsGroup: 10001
       containers:
         - name: backend
-          image: regulated-ai-agent-platform-backend:latest
+          image: ghcr.io/danieloza/regulated-ai-agent-platform-backend:0.1.0
           imagePullPolicy: IfNotPresent
           envFrom:
             - configMapRef:

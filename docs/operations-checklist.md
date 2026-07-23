@@ -46,7 +46,8 @@ Use this checklist when moving from a local evaluation to a shared or deployed e
 - [ ] Keep real secrets out of Git, images, frontend bundles, prompts, logs, and audit metadata.
 - [ ] Inject database and Redis credentials from the environment's secret manager.
 - [ ] Use ConfigMaps or equivalent only for non-sensitive configuration.
-- [ ] Set `LOG_LEVEL`, `ALLOWED_ORIGINS`, `DATABASE_URL`, and `REDIS_URL` explicitly per environment.
+- [ ] Set `LOG_LEVEL`, `ALLOWED_ORIGINS`, `ALLOWED_HOSTS`, `DATABASE_URL`, and `REDIS_URL` explicitly per environment.
+- [ ] Verify production rejects wildcard or missing `ALLOWED_HOSTS` values and that `/docs`, `/redoc`, and `/openapi.json` are disabled.
 - [ ] Rotate credentials and confirm the application reconnects without unsafe manual changes.
 - [ ] Review `GET /api/infra` exposure because it can reveal runtime configuration metadata.
 
