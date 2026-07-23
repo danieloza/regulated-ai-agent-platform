@@ -58,6 +58,31 @@ Use this checklist when moving from a local evaluation to a shared or deployed e
 - [ ] Apply gateway-level TLS, request-size limits, rate limits, IP policy, and credential abuse alerts before external exposure.
 - [ ] Confirm audit and lifecycle pagination limits protect the database from unbounded reads.
 
+## Governed Change Proposals
+
+- [ ] Treat proposal detection as decision support; do not grant it policy, model, knowledge-publication, or deployment credentials.
+- [ ] Restrict detection to operators and final proposal decisions to approvers through corporate IAM.
+- [ ] Verify stable fingerprints prevent duplicates and repeated detection preserves accepted or dismissed decisions.
+- [ ] Require a substantive rationale for evidence requests, dismissal, and release acceptance.
+- [ ] Validate source references, blast radius, evaluation steps, required approvals, rollout stages, and rollback before acceptance.
+- [ ] Confirm `accepted_for_release` creates only a release handoff and cannot mutate runtime state.
+- [ ] Integrate outbox events with the approved workflow or event bus using retry and dead-letter handling.
+- [ ] Alert on high-priority proposal age, incomplete evidence, missing owners, and stalled required approvals.
+- [ ] Require the downstream release controller to verify the manifest digest and every approval independently.
+- [ ] Test rollback in the target environment before enabling a proposal-driven release integration.
+
+## Agent Security Twin
+
+- [ ] Version and review scenario nodes, edges, blocking controls, modeled inventory, failure profiles, and containment actions as security-control changes.
+- [ ] Keep scenario-modeled inventory visibly separate from live exposure or discovery data.
+- [ ] Restrict simulation and containment planning to security operators, decisions to approvers, and evidence access to authorized tenant viewers.
+- [ ] Require unique idempotency keys for enterprise simulations, plans, decisions, and verification replays.
+- [ ] Confirm sandbox containment cannot call shell commands, construct arbitrary destinations, receive infrastructure credentials, or mutate runtime controls.
+- [ ] Verify every containment records an owner, rationale, plan digest, decision, before/after path, and evidence digest.
+- [ ] Send Security Twin outbox events to the approved SIEM, workflow, or SOAR integration with retry and dead-letter handling.
+- [ ] Reconcile production inventory from IAM, CMDB, data catalog, connector registry, and network policy before using blast-radius results operationally.
+- [ ] Require an external release workflow to revalidate separation of duties, scope, rollback, maintenance window, and post-change verification.
+
 ## Governed Knowledge and Secure Context
 
 - [ ] Confirm every source has a business owner, classification, review date, integrity hash, and inherited access policy.
@@ -116,6 +141,11 @@ Use this checklist when moving from a local evaluation to a shared or deployed e
 - [ ] Confirm unsafe knowledge sources are quarantined, high-risk diffs require review comments, and only approved sources enter RAG.
 - [ ] Confirm path traversal, symlinked roots, preview/apply drift, and direct connector publication are blocked.
 - [ ] Confirm protected context cannot override policy, is owner-bound, expires, and produces metadata-only audit evidence.
+- [ ] Confirm proposal detection cannot authorize or execute its own recommendation and terminal decisions are preserved.
+- [ ] Confirm indirect injection, tool-scope escalation, approval bypass, and cross-tenant scenarios stop at their expected control under the current profile.
+- [ ] Confirm candidate control failures change only the applicable path and that modeled blast-radius counts remain explicitly labeled.
+- [ ] Confirm containment cannot proceed without a prepared plan and substantive approver rationale.
+- [ ] Confirm verification replay changes a reachable candidate path to blocked and preserves `runtime_change_applied: false`.
 - [ ] Test PII redaction in audit summaries and operator comments.
 - [ ] Add payload validation, authentication, authorization, and abuse tests before exposing the API beyond a controlled evaluation environment.
 
@@ -125,6 +155,8 @@ Use this checklist when moving from a local evaluation to a shared or deployed e
 - [ ] Review `git diff` and confirm no generated artifacts, local paths, credentials, or unrelated files are included.
 - [ ] Record the application version, image digests, configuration revision, database migration, and rollback procedure.
 - [ ] Validate health, assistant query, tool gateway, approval, run details, ledger, and infrastructure status in the target environment.
+- [ ] Validate proposal detection, filtering, evidence inspection, RBAC, idempotent decisions, outbox delivery, and non-executing release handoff behavior.
+- [ ] Validate Security Twin simulation, blast-radius diff, containment approval, verification replay, evidence export, RBAC, idempotency, and outbox delivery.
 - [ ] Define owners and alerts for API errors, latency, Redis degradation, database health, approval backlog, and rate-limit spikes.
 - [ ] Review the threat model and production limitations for the intended data classification and exposure.
 - [ ] Obtain the required security, privacy, compliance, and operational approvals before handling regulated production data.

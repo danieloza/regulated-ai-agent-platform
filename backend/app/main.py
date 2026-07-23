@@ -395,6 +395,61 @@ class SecureContext(Base):
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
+class ChangeProposal(Base):
+    __tablename__ = "change_proposals"
+
+    id: Mapped[str] = mapped_column(String(48), primary_key=True)
+    fingerprint: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    source_type: Mapped[str] = mapped_column(String(40), index=True)
+    component_type: Mapped[str] = mapped_column(String(40), index=True)
+    severity: Mapped[str] = mapped_column(String(20), index=True)
+    status: Mapped[str] = mapped_column(String(40), default="new", index=True)
+    title: Mapped[str] = mapped_column(String(240))
+    summary: Mapped[str] = mapped_column(Text)
+    trigger: Mapped[str] = mapped_column(Text)
+    hypothesis: Mapped[str] = mapped_column(Text)
+    owner: Mapped[str] = mapped_column(String(120), default="AI Governance")
+    confidence_percent: Mapped[int] = mapped_column(Integer)
+    evidence_completeness_percent: Mapped[int] = mapped_column(Integer)
+    affected_runs: Mapped[int] = mapped_column(Integer, default=0)
+    affected_controls_json: Mapped[list] = mapped_column(JSON, default=list)
+    expected_risk_reduction_percent: Mapped[int] = mapped_column(Integer, default=0)
+    source_refs_json: Mapped[list] = mapped_column(JSON, default=list)
+    evidence_json: Mapped[list] = mapped_column(JSON, default=list)
+    proposed_diff_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    evaluation_plan_json: Mapped[list] = mapped_column(JSON, default=list)
+    required_approvals_json: Mapped[list] = mapped_column(JSON, default=list)
+    rollout_plan_json: Mapped[list] = mapped_column(JSON, default=list)
+    rollback_plan: Mapped[str] = mapped_column(Text)
+    decision_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC), index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC), index=True)
+
+
+class SecurityTwinSimulation(Base):
+    __tablename__ = "security_twin_simulations"
+
+    id: Mapped[str] = mapped_column(String(48), primary_key=True)
+    scenario_id: Mapped[str] = mapped_column(String(80), index=True)
+    scenario_name: Mapped[str] = mapped_column(String(200))
+    candidate_profile: Mapped[str] = mapped_column(String(80), index=True)
+    status: Mapped[str] = mapped_column(String(40), default="simulated", index=True)
+    severity: Mapped[str] = mapped_column(String(20), index=True)
+    outcome: Mapped[str] = mapped_column(String(40), index=True)
+    nodes_json: Mapped[list] = mapped_column(JSON, default=list)
+    edges_json: Mapped[list] = mapped_column(JSON, default=list)
+    steps_json: Mapped[list] = mapped_column(JSON, default=list)
+    controls_json: Mapped[list] = mapped_column(JSON, default=list)
+    blast_radius_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    containment_plan_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    containment_decision_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    verification_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    evidence_digest: Mapped[str] = mapped_column(String(64), index=True)
+    created_by: Mapped[str] = mapped_column(String(120))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC), index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC), index=True)
+
+
 class QueryRequest(BaseModel):
     question: str = Field(min_length=3, max_length=1200)
     user_id: str = "operator.demo"
@@ -429,6 +484,71 @@ class PolicyReplayRequest(BaseModel):
 
 class SecurityEvalReplayRequest(BaseModel):
     candidate_policy: Literal["current", "strict"] = "current"
+
+
+class ChangeProposalDecisionRequest(BaseModel):
+    action: Literal["assign", "request_evidence", "accept_for_release", "dismiss"]
+    operator_id: str = Field(default="governance.operator", min_length=3, max_length=120)
+    comment: str = Field(default="", max_length=1000)
+    owner: str | None = Field(default=None, min_length=3, max_length=120)
+
+
+class EnterpriseChangeProposalDecisionRequest(BaseModel):
+    action: Literal["assign", "request_evidence", "accept_for_release", "dismiss"]
+    comment: str = Field(default="", max_length=1000)
+    owner: str | None = Field(default=None, min_length=3, max_length=120)
+
+
+class ChangeProposalDetectionRequest(BaseModel):
+    operator_id: str = Field(default="governance.operator", min_length=3, max_length=120)
+
+
+class SecurityTwinSimulationRequest(BaseModel):
+    scenario_id: Literal[
+        "indirect_prompt_injection",
+        "tool_scope_escalation",
+        "approval_bypass",
+        "cross_tenant_access",
+    ] = "tool_scope_escalation"
+    candidate_profile: Literal[
+        "current",
+        "policy_guard_disabled",
+        "overprivileged_scope",
+        "approval_bypass",
+        "tenant_boundary_disabled",
+    ] = "current"
+    operator_id: str = Field(default="security.operator", min_length=3, max_length=120)
+
+
+class SecurityTwinActionRequest(BaseModel):
+    operator_id: str = Field(default="security.operator", min_length=3, max_length=120)
+
+
+class SecurityTwinContainmentDecisionRequest(BaseModel):
+    action: Literal["approve", "deny"]
+    operator_id: str = Field(default="security.approver", min_length=3, max_length=120)
+    comment: str = Field(min_length=10, max_length=1000)
+
+
+class EnterpriseSecurityTwinSimulationRequest(BaseModel):
+    scenario_id: Literal[
+        "indirect_prompt_injection",
+        "tool_scope_escalation",
+        "approval_bypass",
+        "cross_tenant_access",
+    ] = "tool_scope_escalation"
+    candidate_profile: Literal[
+        "current",
+        "policy_guard_disabled",
+        "overprivileged_scope",
+        "approval_bypass",
+        "tenant_boundary_disabled",
+    ] = "current"
+
+
+class EnterpriseSecurityContainmentDecisionRequest(BaseModel):
+    action: Literal["approve", "deny"]
+    comment: str = Field(min_length=10, max_length=1000)
 
 
 class GovernanceApplyRequest(BaseModel):
@@ -569,6 +689,136 @@ PROMPT_ATTACKS = [
         "risk": "Read-only request that should be answered from indexed documents.",
     },
 ]
+
+
+SECURITY_TWIN_SCENARIOS = {
+    "indirect_prompt_injection": {
+        "name": "Indirect prompt injection",
+        "summary": "A malicious instruction enters through retrieved knowledge and attempts to acquire tool authority.",
+        "attack_family": "retrieval manipulation",
+        "failure_profile": "policy_guard_disabled",
+        "failure_label": "Disable prompt-policy guard",
+        "severity": "high",
+        "base_block_step": 2,
+        "failure_block_step": 3,
+        "modeled_assets": {"systems": 1, "records": 18, "data_classes": ["regulated case data"]},
+        "nodes": [
+            {"id": "attacker", "label": "Threat actor", "type": "identity", "stage": 0},
+            {"id": "malicious_doc", "label": "Poisoned document", "type": "knowledge", "stage": 1},
+            {"id": "rag", "label": "RAG retrieval", "type": "runtime", "stage": 2},
+            {"id": "policy", "label": "Prompt policy", "type": "control", "stage": 3},
+            {"id": "approval", "label": "Approval gate", "type": "control", "stage": 4},
+            {"id": "case_tool", "label": "Case-note tool", "type": "tool", "stage": 5},
+            {"id": "customer_system", "label": "Customer system", "type": "asset", "stage": 6},
+        ],
+        "steps": [
+            {"node_id": "malicious_doc", "label": "Malicious content accepted as untrusted data", "control_id": "KNOW-04", "control_name": "Knowledge classification"},
+            {"node_id": "rag", "label": "Document retrieved into the context window", "control_id": "RAG-02", "control_name": "Untrusted retrieval boundary"},
+            {"node_id": "policy", "label": "Instruction override evaluated before tool routing", "control_id": "POL-01", "control_name": "Prompt policy guard"},
+            {"node_id": "approval", "label": "Regulated write requires an authorized decision", "control_id": "HITL-02", "control_name": "Human approval gate"},
+            {"node_id": "case_tool", "label": "Scoped case-note capability requested", "control_id": "TOOL-03", "control_name": "Controlled tool gateway"},
+            {"node_id": "customer_system", "label": "Regulated customer record reachable", "control_id": "DATA-06", "control_name": "Business-system authorization"},
+        ],
+        "containment": [
+            {"id": "quarantine_source", "label": "Quarantine the poisoned knowledge source", "owner": "Knowledge Governance"},
+            {"id": "invalidate_index", "label": "Invalidate the affected retrieval index digest", "owner": "Platform Operations"},
+            {"id": "replay_runs", "label": "Replay impacted runs against the clean release", "owner": "AI Security"},
+        ],
+    },
+    "tool_scope_escalation": {
+        "name": "Tool scope escalation",
+        "summary": "An agent attempts to turn a read-only workflow into a regulated write through an overprivileged scope.",
+        "attack_family": "excessive agency",
+        "failure_profile": "overprivileged_scope",
+        "failure_label": "Grant overprivileged case:write",
+        "severity": "critical",
+        "base_block_step": 2,
+        "failure_block_step": None,
+        "modeled_assets": {"systems": 1, "records": 18, "data_classes": ["customer case notes", "KYC workflow state"]},
+        "nodes": [
+            {"id": "operator", "label": "Operator request", "type": "identity", "stage": 0},
+            {"id": "agent", "label": "Customer Copilot", "type": "runtime", "stage": 1},
+            {"id": "policy", "label": "Policy engine", "type": "control", "stage": 2},
+            {"id": "scope", "label": "Scope boundary", "type": "control", "stage": 3},
+            {"id": "case_tool", "label": "Case-note tool", "type": "tool", "stage": 4},
+            {"id": "customer_system", "label": "Customer system", "type": "asset", "stage": 5},
+        ],
+        "steps": [
+            {"node_id": "agent", "label": "Agent interprets the requested business action", "control_id": "AGENT-01", "control_name": "Managed agent identity"},
+            {"node_id": "policy", "label": "Regulated write classified as approval-required", "control_id": "POL-01", "control_name": "Policy decision point"},
+            {"node_id": "scope", "label": "Effective tool scope evaluated server-side", "control_id": "SCOPE-03", "control_name": "Least-privilege scope"},
+            {"node_id": "case_tool", "label": "Case-note mutation capability invoked", "control_id": "TOOL-03", "control_name": "Controlled tool gateway"},
+            {"node_id": "customer_system", "label": "Regulated customer workflow becomes reachable", "control_id": "DATA-06", "control_name": "Business-system authorization"},
+        ],
+        "containment": [
+            {"id": "revoke_scope", "label": "Revoke case:write from the agent identity", "owner": "IAM Operations"},
+            {"id": "suspend_tool", "label": "Suspend case-note routing for the affected agent", "owner": "Platform Operations"},
+            {"id": "review_calls", "label": "Review tool-call evidence since the scope change", "owner": "AI Security"},
+        ],
+    },
+    "approval_bypass": {
+        "name": "Approval bypass",
+        "summary": "A regulated write reaches the execution boundary without a valid, attributable approval decision.",
+        "attack_family": "authorization bypass",
+        "failure_profile": "approval_bypass",
+        "failure_label": "Bypass approval validation",
+        "severity": "critical",
+        "base_block_step": 2,
+        "failure_block_step": None,
+        "modeled_assets": {"systems": 2, "records": 18, "data_classes": ["case notes", "customer risk state"]},
+        "nodes": [
+            {"id": "request", "label": "Write request", "type": "identity", "stage": 0},
+            {"id": "policy", "label": "Policy engine", "type": "control", "stage": 1},
+            {"id": "approval_request", "label": "Approval request", "type": "workflow", "stage": 2},
+            {"id": "approval_gate", "label": "Decision verifier", "type": "control", "stage": 3},
+            {"id": "case_tool", "label": "Case-note tool", "type": "tool", "stage": 4},
+            {"id": "customer_system", "label": "Customer system", "type": "asset", "stage": 5},
+        ],
+        "steps": [
+            {"node_id": "policy", "label": "Policy returns approval_required", "control_id": "POL-01", "control_name": "Policy decision point"},
+            {"node_id": "approval_request", "label": "Immutable approval request created", "control_id": "HITL-01", "control_name": "Approval workflow"},
+            {"node_id": "approval_gate", "label": "Approver identity and decision digest validated", "control_id": "HITL-02", "control_name": "Approval verifier"},
+            {"node_id": "case_tool", "label": "Approved payload presented to the tool gateway", "control_id": "TOOL-03", "control_name": "Controlled tool gateway"},
+            {"node_id": "customer_system", "label": "Regulated records become writable", "control_id": "DATA-06", "control_name": "Business-system authorization"},
+        ],
+        "containment": [
+            {"id": "suspend_writes", "label": "Suspend regulated writes for the agent", "owner": "Platform Operations"},
+            {"id": "invalidate_approvals", "label": "Invalidate unverified approval decisions", "owner": "Compliance Operations"},
+            {"id": "reconcile_records", "label": "Reconcile downstream mutations against evidence", "owner": "Customer Operations"},
+        ],
+    },
+    "cross_tenant_access": {
+        "name": "Cross-tenant access",
+        "summary": "A valid credential attempts object access outside its authorized tenant boundary.",
+        "attack_family": "tenant isolation failure",
+        "failure_profile": "tenant_boundary_disabled",
+        "failure_label": "Disable tenant ownership check",
+        "severity": "critical",
+        "base_block_step": 1,
+        "failure_block_step": None,
+        "modeled_assets": {"systems": 2, "records": 1042, "data_classes": ["customer identity", "audit evidence", "case history"]},
+        "nodes": [
+            {"id": "credential", "label": "Tenant A credential", "type": "identity", "stage": 0},
+            {"id": "api", "label": "Enterprise API", "type": "runtime", "stage": 1},
+            {"id": "tenant_guard", "label": "Tenant boundary", "type": "control", "stage": 2},
+            {"id": "object_authz", "label": "Object authorization", "type": "control", "stage": 3},
+            {"id": "customer_system", "label": "Tenant B records", "type": "asset", "stage": 4},
+            {"id": "audit_store", "label": "Tenant B evidence", "type": "asset", "stage": 5},
+        ],
+        "steps": [
+            {"node_id": "api", "label": "Credential authenticated for Tenant A", "control_id": "IAM-01", "control_name": "Enterprise authentication"},
+            {"node_id": "tenant_guard", "label": "Requested resource tenant compared server-side", "control_id": "TENANT-01", "control_name": "Tenant isolation"},
+            {"node_id": "object_authz", "label": "Object ownership checked before access", "control_id": "AUTHZ-02", "control_name": "Object-level authorization"},
+            {"node_id": "customer_system", "label": "Tenant B customer records reachable", "control_id": "DATA-06", "control_name": "Data access boundary"},
+            {"node_id": "audit_store", "label": "Tenant B audit evidence reachable", "control_id": "AUDIT-01", "control_name": "Evidence-store authorization"},
+        ],
+        "containment": [
+            {"id": "revoke_credential", "label": "Revoke the affected enterprise credential", "owner": "IAM Operations"},
+            {"id": "restore_tenant_guard", "label": "Restore tenant and object ownership checks", "owner": "Platform Security"},
+            {"id": "review_access", "label": "Review cross-tenant access evidence", "owner": "Security Operations"},
+        ],
+    },
+}
 
 
 
@@ -1063,6 +1313,8 @@ def seed() -> None:
             ]
             retention_change.contradictions_json = find_contradictions(retention_change.proposed_claims_json, published_claims)
         session.commit()
+        sync_change_proposals(session)
+        ensure_security_twin_seed()
         if session.scalar(select(Document.id).limit(1)):
             return
         docs = [
@@ -1154,6 +1406,928 @@ def build_risk_runs(session: Session, limit: int = 50) -> list[dict]:
             }
         )
     return sorted(results, key=lambda item: (item["score"], item["created_at"]), reverse=True)
+
+
+def serialize_change_proposal(item: ChangeProposal) -> dict:
+    return {
+        "id": item.id,
+        "fingerprint": item.fingerprint,
+        "source_type": item.source_type,
+        "component_type": item.component_type,
+        "severity": item.severity,
+        "status": item.status,
+        "title": item.title,
+        "summary": item.summary,
+        "trigger": item.trigger,
+        "hypothesis": item.hypothesis,
+        "owner": item.owner,
+        "confidence_percent": item.confidence_percent,
+        "evidence_completeness_percent": item.evidence_completeness_percent,
+        "affected_runs": item.affected_runs,
+        "affected_controls": item.affected_controls_json,
+        "expected_risk_reduction_percent": item.expected_risk_reduction_percent,
+        "source_refs": item.source_refs_json,
+        "evidence": item.evidence_json,
+        "proposed_diff": item.proposed_diff_json,
+        "evaluation_plan": item.evaluation_plan_json,
+        "required_approvals": item.required_approvals_json,
+        "rollout_plan": item.rollout_plan_json,
+        "rollback_plan": item.rollback_plan,
+        "decision": item.decision_json,
+        "created_at": item.created_at.isoformat(),
+        "updated_at": item.updated_at.isoformat(),
+        "execution_state": "not_executed",
+    }
+
+
+def build_change_proposal_specs(session: Session) -> list[dict]:
+    strict_replay = []
+    for attack in PROMPT_ATTACKS:
+        candidate = classify_candidate_policy(attack["prompt"], "strict")
+        diff, risk = policy_diff(attack["expected_decision"], candidate["decision"])
+        strict_replay.append(
+            {
+                "run_id": f"eval:{attack['id']}",
+                "current_decision": attack["expected_decision"],
+                "candidate_decision": candidate["decision"],
+                "diff": diff,
+                "risk": risk,
+            }
+        )
+    changed = [item for item in strict_replay if item["diff"] != "unchanged"]
+    retention_change = session.get(KnowledgeChange, "kchg_retention_2026")
+    pending_approvals = session.scalars(
+        select(Approval).where(Approval.status == "pending").order_by(Approval.created_at)
+    ).all()
+    eval_cases = json.loads(SECURITY_EVAL_PATH.read_text(encoding="utf-8"))
+    eval_text = " ".join(f"{item['id']} {item['input']}" for item in eval_cases).lower()
+    missing_eval_families = [
+        family
+        for family, markers in {
+            "authorization bypass": ["authorization", "cross-tenant", "wrong tenant"],
+            "PII over-disclosure": ["pii", "personal data", "email address"],
+            "indirect retrieval injection": ["retrieved document", "indirect injection", "malicious source"],
+        }.items()
+        if not any(marker in eval_text for marker in markers)
+    ]
+    contradiction_count = len(retention_change.contradictions_json) if retention_change else 0
+    knowledge_runs = retention_change.affected_runs if retention_change else 0
+    approval_refs = [item.id for item in pending_approvals[:5]]
+
+    return [
+        {
+            "fingerprint_basis": "policy:strict-regulated-write-blast-radius:v1",
+            "source_type": "policy_replay",
+            "component_type": "policy",
+            "severity": "high",
+            "title": "Require release review for strict write policy",
+            "summary": "Strict mode converts regulated writes from approval-gated to denied and changes an established operating path.",
+            "trigger": f"{len(changed)} replayed decision would become stricter under the candidate policy.",
+            "hypothesis": "A scoped strict-mode rule can reduce unsafe write attempts without blocking approved case-management workflows.",
+            "owner": "AI Governance",
+            "confidence_percent": 94,
+            "evidence_completeness_percent": 88,
+            "affected_runs": len(changed),
+            "affected_controls": ["POL-01", "HITL-02", "EVAL-03"],
+            "expected_risk_reduction_percent": 24,
+            "source_refs": ["policy-replay:strict", *[item["run_id"] for item in changed]],
+            "evidence": [
+                {"label": "Replay result", "value": f"{len(changed)} changed decision", "state": "verified"},
+                {"label": "Prompt-injection denial", "value": "preserved", "state": "verified"},
+                {"label": "Write workflow impact", "value": "human review required", "state": "review"},
+            ],
+            "proposed_diff": {
+                "current": "Regulated writes return approval_required.",
+                "candidate": "Strict mode denies regulated writes unless an approved exception profile is active.",
+            },
+            "evaluation_plan": [
+                "Replay the last 100 regulated-write runs.",
+                "Run the complete adversarial security corpus.",
+                "Measure false-positive rate for approved case-management workflows.",
+            ],
+            "required_approvals": ["AI Risk Owner", "Customer Operations Owner"],
+            "rollout_plan": ["Shadow evaluation", "5% canary", "24-hour observation", "controlled promotion"],
+            "rollback_plan": "Restore the current policy version and invalidate the candidate release manifest.",
+        },
+        {
+            "fingerprint_basis": "knowledge:retention-contradiction-2026:v1",
+            "source_type": "knowledge_change",
+            "component_type": "knowledge",
+            "severity": "high",
+            "title": "Resolve retention contradiction before publication",
+            "summary": "A candidate retention standard conflicts with currently published knowledge used by source-bound answers.",
+            "trigger": f"{contradiction_count} material contradiction affects {knowledge_runs} historical runs.",
+            "hypothesis": "Publishing a reconciled claim set and regenerating affected answers will remove conflicting retention guidance.",
+            "owner": "Knowledge Governance",
+            "confidence_percent": 97,
+            "evidence_completeness_percent": 92,
+            "affected_runs": knowledge_runs,
+            "affected_controls": ["KNOW-04", "RAG-02", "RET-07"],
+            "expected_risk_reduction_percent": 38,
+            "source_refs": ["knowledge-change:kchg_retention_2026", "source:ksrc_retention_2025", "source:ksrc_retention_2026"],
+            "evidence": [
+                {"label": "Contradictions", "value": str(contradiction_count), "state": "verified"},
+                {"label": "Affected historical runs", "value": str(knowledge_runs), "state": "verified"},
+                {"label": "Legal interpretation", "value": "approval pending", "state": "review"},
+            ],
+            "proposed_diff": {
+                "current": "Customer case records retained for five years.",
+                "candidate": "Customer case records retained for seven years after legal approval.",
+            },
+            "evaluation_plan": [
+                "Obtain Legal Operations interpretation.",
+                "Replay affected source-bound answers.",
+                "Verify citations resolve to one effective claim.",
+            ],
+            "required_approvals": ["Legal Operations", "Knowledge Governance"],
+            "rollout_plan": ["Publish versioned source", "Re-index claims", "Regenerate affected answers", "Monitor citation drift"],
+            "rollback_plan": "Reactivate the previous knowledge release and restore its index digest.",
+        },
+        {
+            "fingerprint_basis": "security-evals:coverage-gaps:v1",
+            "source_type": "security_eval",
+            "component_type": "evaluation",
+            "severity": "medium",
+            "title": "Extend adversarial coverage for access boundaries",
+            "summary": "The current deterministic security suite covers core injection and shell abuse but omits several enterprise boundary cases.",
+            "trigger": f"{len(missing_eval_families)} attack families are not represented in the security-eval corpus.",
+            "hypothesis": "Adding tenant, PII, and indirect-injection cases will detect policy regressions before release.",
+            "owner": "AI Security",
+            "confidence_percent": 91,
+            "evidence_completeness_percent": 76,
+            "affected_runs": 0,
+            "affected_controls": ["EVAL-03", "TENANT-01", "PII-05"],
+            "expected_risk_reduction_percent": 19,
+            "source_refs": [f"security-evals:{item['id']}" for item in eval_cases],
+            "evidence": [
+                {"label": "Existing cases", "value": str(len(eval_cases)), "state": "verified"},
+                {"label": "Missing families", "value": ", ".join(missing_eval_families), "state": "gap"},
+                {"label": "Baseline failures", "value": "0 known", "state": "verified"},
+            ],
+            "proposed_diff": {
+                "current": f"{len(eval_cases)} core adversarial cases.",
+                "candidate": f"{len(eval_cases) + len(missing_eval_families)} cases including tenant, PII, and indirect retrieval boundaries.",
+            },
+            "evaluation_plan": [
+                "Add one deterministic case per missing attack family.",
+                "Verify expected decisions under current and strict policies.",
+                "Block release if a denial regresses to allowed.",
+            ],
+            "required_approvals": ["AI Security"],
+            "rollout_plan": ["Add corpus cases", "Run CI security gate", "Publish coverage evidence"],
+            "rollback_plan": "Revert only invalid test fixtures; never waive a confirmed security regression.",
+        },
+        {
+            "fingerprint_basis": "approval:pending-regulated-write-sla:v1",
+            "source_type": "approval_queue",
+            "component_type": "workflow",
+            "severity": "medium",
+            "title": "Add escalation control for pending regulated writes",
+            "summary": "Pending regulated-write approvals need an explicit service-level escalation path and accountable owner.",
+            "trigger": f"{len(pending_approvals)} regulated approval is currently pending.",
+            "hypothesis": "A measured escalation rule will reduce unattended approvals without bypassing human authorization.",
+            "owner": "Customer Operations",
+            "confidence_percent": 86,
+            "evidence_completeness_percent": 71,
+            "affected_runs": len(pending_approvals),
+            "affected_controls": ["HITL-02", "OPS-06"],
+            "expected_risk_reduction_percent": 14,
+            "source_refs": [f"approval:{item}" for item in approval_refs] or ["approval-queue:empty"],
+            "evidence": [
+                {"label": "Pending approvals", "value": str(len(pending_approvals)), "state": "verified"},
+                {"label": "Escalation owner", "value": "Customer Operations", "state": "verified"},
+                {"label": "Target SLA", "value": "30 minutes", "state": "proposed"},
+            ],
+            "proposed_diff": {
+                "current": "Pending approval remains in the queue until manual review.",
+                "candidate": "Notify the accountable owner at 20 minutes and escalate at 30 minutes; execution remains blocked.",
+            },
+            "evaluation_plan": [
+                "Measure current approval age distribution.",
+                "Validate escalation routing with Customer Operations.",
+                "Confirm no timeout path can execute a write.",
+            ],
+            "required_approvals": ["Customer Operations Owner", "AI Risk Owner"],
+            "rollout_plan": ["Observe-only SLA metrics", "Enable notifications", "Review after seven days"],
+            "rollback_plan": "Disable notifications while retaining the approval block and audit history.",
+        },
+    ]
+
+
+def sync_change_proposals(session: Session) -> dict:
+    created = 0
+    refreshed = 0
+    preserved = 0
+    now = datetime.now(UTC)
+    for spec in build_change_proposal_specs(session):
+        fingerprint = hashlib.sha256(spec["fingerprint_basis"].encode("utf-8")).hexdigest()
+        item = session.scalar(select(ChangeProposal).where(ChangeProposal.fingerprint == fingerprint))
+        values = {key: value for key, value in spec.items() if key != "fingerprint_basis"}
+        if not item:
+            item = ChangeProposal(
+                id=f"gcp_{fingerprint[:12]}",
+                fingerprint=fingerprint,
+                source_type=values["source_type"],
+                component_type=values["component_type"],
+                severity=values["severity"],
+                status="new",
+                title=values["title"],
+                summary=values["summary"],
+                trigger=values["trigger"],
+                hypothesis=values["hypothesis"],
+                owner=values["owner"],
+                confidence_percent=values["confidence_percent"],
+                evidence_completeness_percent=values["evidence_completeness_percent"],
+                affected_runs=values["affected_runs"],
+                affected_controls_json=values["affected_controls"],
+                expected_risk_reduction_percent=values["expected_risk_reduction_percent"],
+                source_refs_json=values["source_refs"],
+                evidence_json=values["evidence"],
+                proposed_diff_json=values["proposed_diff"],
+                evaluation_plan_json=values["evaluation_plan"],
+                required_approvals_json=values["required_approvals"],
+                rollout_plan_json=values["rollout_plan"],
+                rollback_plan=values["rollback_plan"],
+                decision_json={},
+                created_at=now,
+                updated_at=now,
+            )
+            session.add(item)
+            created += 1
+            continue
+        if item.status in {"accepted_for_release", "dismissed"}:
+            preserved += 1
+            continue
+        for field, source_key in {
+            "source_type": "source_type",
+            "component_type": "component_type",
+            "severity": "severity",
+            "title": "title",
+            "summary": "summary",
+            "trigger": "trigger",
+            "hypothesis": "hypothesis",
+            "confidence_percent": "confidence_percent",
+            "evidence_completeness_percent": "evidence_completeness_percent",
+            "affected_runs": "affected_runs",
+            "affected_controls_json": "affected_controls",
+            "expected_risk_reduction_percent": "expected_risk_reduction_percent",
+            "source_refs_json": "source_refs",
+            "evidence_json": "evidence",
+            "proposed_diff_json": "proposed_diff",
+            "evaluation_plan_json": "evaluation_plan",
+            "required_approvals_json": "required_approvals",
+            "rollout_plan_json": "rollout_plan",
+            "rollback_plan": "rollback_plan",
+        }.items():
+            setattr(item, field, values[source_key])
+        item.updated_at = now
+        refreshed += 1
+    session.commit()
+    return {"created": created, "refreshed": refreshed, "preserved": preserved}
+
+
+def change_proposal_overview(session: Session, status: str | None = None, source_type: str | None = None) -> dict:
+    query = select(ChangeProposal)
+    if status:
+        query = query.where(ChangeProposal.status == status)
+    if source_type:
+        query = query.where(ChangeProposal.source_type == source_type)
+    severity_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+    items = session.scalars(query.order_by(ChangeProposal.updated_at.desc())).all()
+    items = sorted(items, key=lambda item: (severity_order.get(item.severity, 4), -item.updated_at.timestamp()))
+    all_items = session.scalars(select(ChangeProposal)).all()
+    open_items = [item for item in all_items if item.status not in {"accepted_for_release", "dismissed"}]
+    avg_evidence = round(
+        sum(item.evidence_completeness_percent for item in open_items) / len(open_items)
+    ) if open_items else 100
+    return {
+        "generated_at": now_iso(),
+        "operating_mode": {
+            "synthesis": "deterministic_rules",
+            "authorization": "human_required",
+            "execution": "not_executed",
+            "statement": "Signals may create review proposals; no proposal can change runtime controls automatically.",
+        },
+        "metrics": {
+            "open": len(open_items),
+            "high_priority": sum(item.severity in {"critical", "high"} for item in open_items),
+            "average_evidence_percent": avg_evidence,
+            "accepted_for_release": sum(item.status == "accepted_for_release" for item in all_items),
+        },
+        "filters": {
+            "statuses": ["new", "in_review", "needs_evidence", "accepted_for_release", "dismissed"],
+            "source_types": sorted({item.source_type for item in all_items}),
+        },
+        "proposals": [serialize_change_proposal(item) for item in items],
+    }
+
+
+def decide_change_proposal(proposal_id: str, request: ChangeProposalDecisionRequest) -> dict:
+    with SessionLocal() as session:
+        item = session.get(ChangeProposal, proposal_id)
+        if not item:
+            raise HTTPException(status_code=404, detail="Change proposal not found.")
+        if item.status in {"accepted_for_release", "dismissed"}:
+            raise HTTPException(status_code=409, detail="Terminal proposals cannot be changed.")
+        comment = request.comment.strip()
+        if request.action in {"request_evidence", "accept_for_release", "dismiss"} and len(comment) < 10:
+            raise HTTPException(status_code=422, detail="A substantive operator comment of at least 10 characters is required.")
+        if request.action == "assign":
+            if not request.owner:
+                raise HTTPException(status_code=422, detail="Owner is required when assigning a proposal.")
+            item.owner = request.owner.strip()
+            item.status = "in_review"
+        elif request.action == "request_evidence":
+            item.status = "needs_evidence"
+        elif request.action == "accept_for_release":
+            item.status = "accepted_for_release"
+        else:
+            item.status = "dismissed"
+        item.decision_json = {
+            "action": request.action,
+            "operator_id": request.operator_id,
+            "comment": redact_pii(comment),
+            "owner": item.owner,
+            "decided_at": now_iso(),
+        }
+        item.updated_at = datetime.now(UTC)
+        session.commit()
+        audit(
+            session,
+            item.id,
+            request.operator_id,
+            "change_proposal_decision",
+            item.status,
+            f"Change proposal {item.id} marked {item.status}.",
+            {
+                "proposal_id": item.id,
+                "action": request.action,
+                "component_type": item.component_type,
+                "execution_state": "not_executed",
+            },
+        )
+        response = {"proposal": serialize_change_proposal(item), "runtime_change_applied": False}
+        if request.action == "accept_for_release":
+            manifest_basis = json.dumps(
+                {
+                    "proposal_id": item.id,
+                    "component_type": item.component_type,
+                    "proposed_diff": item.proposed_diff_json,
+                    "approvals": item.required_approvals_json,
+                },
+                sort_keys=True,
+            )
+            response["release_handoff"] = {
+                "candidate_id": f"candidate_{item.fingerprint[:12]}",
+                "manifest_digest": hashlib.sha256(manifest_basis.encode("utf-8")).hexdigest(),
+                "state": "awaiting_release_pipeline",
+                "execution_state": "not_executed",
+                "required_approvals": item.required_approvals_json,
+                "rollout_plan": item.rollout_plan_json,
+                "rollback_plan": item.rollback_plan,
+            }
+        return response
+
+
+def evaluate_security_twin_path(scenario_id: str, candidate_profile: str) -> dict:
+    scenario = SECURITY_TWIN_SCENARIOS.get(scenario_id)
+    if not scenario:
+        raise HTTPException(status_code=404, detail="Security Twin scenario not found.")
+    if candidate_profile != "current" and candidate_profile != scenario["failure_profile"]:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Profile {candidate_profile} is not applicable to scenario {scenario_id}.",
+        )
+
+    blocked_step = (
+        scenario["base_block_step"]
+        if candidate_profile == "current"
+        else scenario["failure_block_step"]
+    )
+    nodes = [{**scenario["nodes"][0], "state": "reached", "sequence": 0}]
+    steps = []
+    controls = []
+    for index, step in enumerate(scenario["steps"]):
+        if blocked_step is None or index < blocked_step:
+            state = "reached"
+        elif index == blocked_step:
+            state = "blocked"
+        else:
+            state = "not_reachable"
+        steps.append(
+            {
+                "sequence": index + 1,
+                **step,
+                "state": state,
+                "evidence_ref": f"security-twin:{scenario_id}:{candidate_profile}:step-{index + 1}",
+            }
+        )
+        node = next(item for item in scenario["nodes"] if item["id"] == step["node_id"])
+        nodes.append({**node, "state": state, "sequence": index + 1})
+        if index == scenario["base_block_step"] and candidate_profile != "current":
+            control_state = "bypassed"
+        elif state == "blocked":
+            control_state = "enforced"
+        elif state == "not_reachable":
+            control_state = "not_reached"
+        else:
+            control_state = "observed"
+        controls.append(
+            {
+                "id": step["control_id"],
+                "name": step["control_name"],
+                "state": control_state,
+                "step": index + 1,
+            }
+        )
+
+    edges = []
+    for index in range(len(nodes) - 1):
+        target_state = nodes[index + 1]["state"]
+        edges.append(
+            {
+                "id": f"{nodes[index]['id']}:{nodes[index + 1]['id']}",
+                "source": nodes[index]["id"],
+                "target": nodes[index + 1]["id"],
+                "state": "blocked" if target_state == "blocked" else "active" if target_state == "reached" else "inactive",
+                "label": "attempted" if target_state == "blocked" else "can reach" if target_state == "reached" else "not reachable",
+            }
+        )
+
+    asset_reached = any(item["type"] == "asset" and item["state"] == "reached" for item in nodes)
+    outcome = "asset_reached" if asset_reached else "blocked"
+    severity = scenario["severity"] if asset_reached else "medium" if candidate_profile != "current" else "low"
+    blocked_control = next((item for item in controls if item["state"] == "enforced"), None)
+    return {
+        "profile": candidate_profile,
+        "outcome": outcome,
+        "severity": severity,
+        "nodes": nodes,
+        "edges": edges,
+        "steps": steps,
+        "controls": controls,
+        "blocked_at": blocked_control,
+        "degraded_controls": [item for item in controls if item["state"] == "bypassed"],
+    }
+
+
+def build_security_twin_result(scenario_id: str, candidate_profile: str) -> dict:
+    scenario = SECURITY_TWIN_SCENARIOS[scenario_id]
+    baseline = evaluate_security_twin_path(scenario_id, "current")
+    candidate = evaluate_security_twin_path(scenario_id, candidate_profile)
+    candidate_reached = candidate["outcome"] == "asset_reached"
+    modeled = scenario["modeled_assets"]
+    baseline_blast = {
+        "reachable_systems": 0,
+        "reachable_records": 0,
+        "data_classes": [],
+    }
+    candidate_blast = {
+        "reachable_systems": modeled["systems"] if candidate_reached else 0,
+        "reachable_records": modeled["records"] if candidate_reached else 0,
+        "data_classes": modeled["data_classes"] if candidate_reached else [],
+    }
+    return {
+        **candidate,
+        "baseline": {
+            "profile": "current",
+            "outcome": baseline["outcome"],
+            "severity": baseline["severity"],
+            "blocked_at": baseline["blocked_at"],
+        },
+        "blast_radius": {
+            "method": "deterministic_scenario_inventory",
+            "statement": "Counts represent modeled scenario inventory, not a live production data scan.",
+            "baseline": baseline_blast,
+            "candidate": candidate_blast,
+            "diff": {
+                "systems": candidate_blast["reachable_systems"] - baseline_blast["reachable_systems"],
+                "records": candidate_blast["reachable_records"] - baseline_blast["reachable_records"],
+            },
+        },
+    }
+
+
+def security_twin_evidence_digest(item: SecurityTwinSimulation) -> str:
+    evidence = {
+        "simulation_id": item.id,
+        "scenario_id": item.scenario_id,
+        "candidate_profile": item.candidate_profile,
+        "outcome": item.outcome,
+        "nodes": item.nodes_json,
+        "edges": item.edges_json,
+        "steps": item.steps_json,
+        "controls": item.controls_json,
+        "blast_radius": item.blast_radius_json,
+        "containment_plan": item.containment_plan_json,
+        "containment_decision": item.containment_decision_json,
+        "verification": item.verification_json,
+    }
+    return hashlib.sha256(json.dumps(evidence, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
+
+
+def serialize_security_twin_simulation(item: SecurityTwinSimulation) -> dict:
+    scenario = SECURITY_TWIN_SCENARIOS[item.scenario_id]
+    return {
+        "id": item.id,
+        "scenario_id": item.scenario_id,
+        "scenario_name": item.scenario_name,
+        "summary": scenario["summary"],
+        "attack_family": scenario["attack_family"],
+        "candidate_profile": item.candidate_profile,
+        "candidate_profile_label": "Current controls" if item.candidate_profile == "current" else scenario["failure_label"],
+        "status": item.status,
+        "severity": item.severity,
+        "outcome": item.outcome,
+        "nodes": item.nodes_json,
+        "edges": item.edges_json,
+        "steps": item.steps_json,
+        "controls": item.controls_json,
+        "blast_radius": item.blast_radius_json,
+        "containment_plan": item.containment_plan_json,
+        "containment_decision": item.containment_decision_json,
+        "verification": item.verification_json,
+        "evidence_digest": item.evidence_digest,
+        "created_by": item.created_by,
+        "created_at": item.created_at.isoformat(),
+        "updated_at": item.updated_at.isoformat(),
+        "runtime_change_applied": False,
+    }
+
+
+def create_security_twin_simulation(request: SecurityTwinSimulationRequest) -> dict:
+    result = build_security_twin_result(request.scenario_id, request.candidate_profile)
+    scenario = SECURITY_TWIN_SCENARIOS[request.scenario_id]
+    simulation = SecurityTwinSimulation(
+        id=f"twin_{uuid4().hex[:12]}",
+        scenario_id=request.scenario_id,
+        scenario_name=scenario["name"],
+        candidate_profile=request.candidate_profile,
+        status="simulated",
+        severity=result["severity"],
+        outcome=result["outcome"],
+        nodes_json=result["nodes"],
+        edges_json=result["edges"],
+        steps_json=result["steps"],
+        controls_json=result["controls"],
+        blast_radius_json={**result["blast_radius"], "baseline_outcome": result["baseline"]},
+        containment_plan_json={},
+        containment_decision_json={},
+        verification_json={},
+        evidence_digest="",
+        created_by=request.operator_id,
+    )
+    simulation.evidence_digest = security_twin_evidence_digest(simulation)
+    with SessionLocal() as session:
+        session.add(simulation)
+        session.commit()
+        audit(
+            session,
+            simulation.id,
+            request.operator_id,
+            "security_twin_simulated",
+            simulation.outcome,
+            f"Security Twin evaluated {simulation.scenario_name} under {request.candidate_profile}.",
+            {
+                "scenario_id": simulation.scenario_id,
+                "candidate_profile": request.candidate_profile,
+                "severity": simulation.severity,
+                "modeled_records": simulation.blast_radius_json["candidate"]["reachable_records"],
+                "runtime_change_applied": False,
+            },
+        )
+        return serialize_security_twin_simulation(simulation)
+
+
+def ensure_security_twin_seed() -> None:
+    with SessionLocal() as session:
+        if session.scalar(select(SecurityTwinSimulation.id).limit(1)):
+            return
+    create_security_twin_simulation(
+        SecurityTwinSimulationRequest(
+            scenario_id="tool_scope_escalation",
+            candidate_profile="overprivileged_scope",
+            operator_id="system.security-twin-seed",
+        )
+    )
+
+
+def security_twin_overview(simulation_id: str | None = None) -> dict:
+    with SessionLocal() as session:
+        simulations = session.scalars(
+            select(SecurityTwinSimulation).order_by(SecurityTwinSimulation.created_at.desc()).limit(20)
+        ).all()
+        selected = session.get(SecurityTwinSimulation, simulation_id) if simulation_id else (simulations[0] if simulations else None)
+        if simulation_id and not selected:
+            raise HTTPException(status_code=404, detail="Security Twin simulation not found.")
+        open_paths = [
+            item
+            for item in simulations
+            if item.outcome == "asset_reached" and not item.verification_json.get("effective")
+        ]
+        verified = [item for item in simulations if item.verification_json.get("effective")]
+        scenario_catalog = [
+            {
+                "id": scenario_id,
+                "name": spec["name"],
+                "summary": spec["summary"],
+                "attack_family": spec["attack_family"],
+                "failure_profile": spec["failure_profile"],
+                "failure_label": spec["failure_label"],
+                "severity": spec["severity"],
+            }
+            for scenario_id, spec in SECURITY_TWIN_SCENARIOS.items()
+        ]
+        return {
+            "generated_at": now_iso(),
+            "operating_mode": {
+                "engine": "deterministic_reachability",
+                "inventory": "scenario_modeled",
+                "containment": "sandbox_only",
+                "authorization": "human_required",
+                "statement": "Security Twin never grants runtime authority. Containment decisions affect only the simulation until an external release process applies an approved change.",
+            },
+            "metrics": {
+                "scenarios": len(SECURITY_TWIN_SCENARIOS),
+                "open_attack_paths": len(open_paths),
+                "verified_containments": len(verified),
+                "modeled_records_at_risk": max(
+                    (item.blast_radius_json.get("candidate", {}).get("reachable_records", 0) for item in open_paths),
+                    default=0,
+                ),
+            },
+            "scenarios": scenario_catalog,
+            "simulations": [serialize_security_twin_simulation(item) for item in simulations],
+            "selected": serialize_security_twin_simulation(selected) if selected else None,
+        }
+
+
+def prepare_security_twin_containment(simulation_id: str, operator_id: str) -> dict:
+    with SessionLocal() as session:
+        item = session.get(SecurityTwinSimulation, simulation_id)
+        if not item:
+            raise HTTPException(status_code=404, detail="Security Twin simulation not found.")
+        if item.candidate_profile == "current":
+            raise HTTPException(status_code=409, detail="Current-control simulations do not require a containment plan.")
+        if item.status in {"containment_approved", "verified"}:
+            raise HTTPException(status_code=409, detail="Containment has already been approved for this simulation.")
+        scenario = SECURITY_TWIN_SCENARIOS[item.scenario_id]
+        if not item.containment_plan_json:
+            plan_basis = {
+                "simulation_id": item.id,
+                "scenario_id": item.scenario_id,
+                "actions": scenario["containment"],
+                "evidence_digest": item.evidence_digest,
+            }
+            item.containment_plan_json = {
+                "id": f"contain_{uuid4().hex[:12]}",
+                "state": "awaiting_approval",
+                "execution_scope": "security_twin_sandbox",
+                "actions": [{**action, "state": "proposed"} for action in scenario["containment"]],
+                "required_role": "approver",
+                "runtime_execution": "blocked",
+                "plan_digest": hashlib.sha256(
+                    json.dumps(plan_basis, sort_keys=True).encode("utf-8")
+                ).hexdigest(),
+                "prepared_by": operator_id,
+                "prepared_at": now_iso(),
+            }
+        item.status = "containment_pending"
+        item.updated_at = datetime.now(UTC)
+        item.evidence_digest = security_twin_evidence_digest(item)
+        session.commit()
+        audit(
+            session,
+            item.id,
+            operator_id,
+            "security_containment_planned",
+            "approval_required",
+            f"Prepared sandbox containment plan for {item.scenario_name}.",
+            {"containment_id": item.containment_plan_json["id"], "runtime_change_applied": False},
+        )
+        return {"simulation": serialize_security_twin_simulation(item), "runtime_change_applied": False}
+
+
+def decide_security_twin_containment(
+    simulation_id: str,
+    request: SecurityTwinContainmentDecisionRequest,
+) -> dict:
+    with SessionLocal() as session:
+        item = session.get(SecurityTwinSimulation, simulation_id)
+        if not item:
+            raise HTTPException(status_code=404, detail="Security Twin simulation not found.")
+        if not item.containment_plan_json:
+            raise HTTPException(status_code=409, detail="Prepare a containment plan before recording a decision.")
+        if item.status in {"containment_approved", "containment_denied", "verified"}:
+            raise HTTPException(status_code=409, detail="Containment decision is already terminal.")
+        decision = {
+            "action": request.action,
+            "operator_id": request.operator_id,
+            "comment": redact_pii(request.comment.strip()),
+            "decided_at": now_iso(),
+            "scope": "security_twin_sandbox",
+        }
+        item.containment_decision_json = decision
+        plan = dict(item.containment_plan_json)
+        plan["state"] = "approved_for_verification" if request.action == "approve" else "denied"
+        item.containment_plan_json = plan
+        item.status = "containment_approved" if request.action == "approve" else "containment_denied"
+        item.updated_at = datetime.now(UTC)
+        item.evidence_digest = security_twin_evidence_digest(item)
+        session.commit()
+        audit(
+            session,
+            item.id,
+            request.operator_id,
+            "security_containment_decided",
+            item.status,
+            f"Sandbox containment plan {'approved' if request.action == 'approve' else 'denied'} for {item.scenario_name}.",
+            {
+                "containment_id": item.containment_plan_json["id"],
+                "scope": "security_twin_sandbox",
+                "runtime_change_applied": False,
+            },
+        )
+        return {
+            "simulation": serialize_security_twin_simulation(item),
+            "sandbox_containment_armed": request.action == "approve",
+            "runtime_change_applied": False,
+        }
+
+
+def verify_security_twin_containment(simulation_id: str, operator_id: str) -> dict:
+    with SessionLocal() as session:
+        item = session.get(SecurityTwinSimulation, simulation_id)
+        if not item:
+            raise HTTPException(status_code=404, detail="Security Twin simulation not found.")
+        if item.status != "containment_approved":
+            raise HTTPException(status_code=409, detail="An approved sandbox containment is required before verification.")
+        safe_path = evaluate_security_twin_path(item.scenario_id, "current")
+        original_reached = item.outcome == "asset_reached"
+        effective = safe_path["outcome"] == "blocked"
+        plan = dict(item.containment_plan_json)
+        plan["state"] = "verified" if effective else "verification_failed"
+        plan["actions"] = [
+            {**action, "state": "verified" if effective else "failed"}
+            for action in plan.get("actions", [])
+        ]
+        item.containment_plan_json = plan
+        item.verification_json = {
+            "effective": effective,
+            "path_broken": original_reached and effective,
+            "controls_restored": effective,
+            "before": {
+                "profile": item.candidate_profile,
+                "outcome": item.outcome,
+                "reachable_records": item.blast_radius_json["candidate"]["reachable_records"],
+            },
+            "after": {
+                "profile": "approved_containment",
+                "outcome": safe_path["outcome"],
+                "reachable_records": 0,
+                "blocked_at": safe_path["blocked_at"],
+                "nodes": safe_path["nodes"],
+                "edges": safe_path["edges"],
+                "steps": safe_path["steps"],
+                "controls": safe_path["controls"],
+            },
+            "verified_by": operator_id,
+            "verified_at": now_iso(),
+            "runtime_change_applied": False,
+        }
+        item.status = "verified" if effective else "verification_failed"
+        item.updated_at = datetime.now(UTC)
+        item.evidence_digest = security_twin_evidence_digest(item)
+        session.commit()
+        audit(
+            session,
+            item.id,
+            operator_id,
+            "security_containment_verified",
+            item.status,
+            f"Replayed {item.scenario_name} after approved sandbox containment.",
+            {
+                "effective": effective,
+                "path_broken": original_reached and effective,
+                "runtime_change_applied": False,
+            },
+        )
+        return {
+            "simulation": serialize_security_twin_simulation(item),
+            "verification": item.verification_json,
+            "runtime_change_applied": False,
+        }
+
+
+def security_twin_evidence_pack(simulation_id: str) -> dict:
+    with SessionLocal() as session:
+        item = session.get(SecurityTwinSimulation, simulation_id)
+        if not item:
+            raise HTTPException(status_code=404, detail="Security Twin simulation not found.")
+        payload = serialize_security_twin_simulation(item)
+        return {
+            "schema_version": "security-twin-evidence.v1",
+            "generated_at": now_iso(),
+            "simulation": payload,
+            "integrity": {
+                "algorithm": "sha256",
+                "digest": item.evidence_digest,
+                "covers": [
+                    "attack path",
+                    "control states",
+                    "modeled blast radius",
+                    "containment decision",
+                    "verification replay",
+                ],
+            },
+            "limitations": [
+                "The graph is calculated from deterministic scenario inventory and configured controls.",
+                "Sandbox containment does not mutate IAM, policies, credentials, connectors, or business systems.",
+            ],
+        }
+
+
+@app.get("/api/change-proposals", tags=["Change Governance"])
+def get_change_proposals(
+    status: str | None = Query(default=None, max_length=40),
+    source_type: str | None = Query(default=None, max_length=40),
+) -> dict:
+    with SessionLocal() as session:
+        return change_proposal_overview(session, status=status, source_type=source_type)
+
+
+@app.post("/api/change-proposals/detect", tags=["Change Governance"])
+def detect_change_proposals(request: ChangeProposalDetectionRequest) -> dict:
+    with SessionLocal() as session:
+        result = sync_change_proposals(session)
+        audit(
+            session,
+            "change_proposal_detection",
+            request.operator_id,
+            "change_proposals_detected",
+            "review_required",
+            "Refreshed governed change proposals from auditable platform signals.",
+            {**result, "execution_state": "not_executed"},
+        )
+        return {**change_proposal_overview(session), "detection": result}
+
+
+@app.post("/api/change-proposals/{proposal_id}/decision", tags=["Change Governance"])
+def change_proposal_decision(proposal_id: str, request: ChangeProposalDecisionRequest) -> dict:
+    return decide_change_proposal(proposal_id, request)
+
+
+@app.get("/api/security/attack-paths", tags=["Agent Security Twin"])
+def get_security_twin(simulation_id: str | None = Query(default=None, max_length=48)) -> dict:
+    return security_twin_overview(simulation_id)
+
+
+@app.get("/api/security/attack-paths/{simulation_id}", tags=["Agent Security Twin"])
+def get_security_twin_simulation(simulation_id: str) -> dict:
+    with SessionLocal() as session:
+        item = session.get(SecurityTwinSimulation, simulation_id)
+        if not item:
+            raise HTTPException(status_code=404, detail="Security Twin simulation not found.")
+        return serialize_security_twin_simulation(item)
+
+
+@app.post("/api/security/attack-paths/simulate", tags=["Agent Security Twin"])
+def simulate_security_twin(request: SecurityTwinSimulationRequest) -> dict:
+    return {
+        "simulation": create_security_twin_simulation(request),
+        "runtime_change_applied": False,
+    }
+
+
+@app.post("/api/security/attack-paths/{simulation_id}/containment-plan", tags=["Agent Security Twin"])
+def plan_security_twin_containment(
+    simulation_id: str,
+    request: SecurityTwinActionRequest,
+) -> dict:
+    return prepare_security_twin_containment(simulation_id, request.operator_id)
+
+
+@app.post("/api/security/containments/{simulation_id}/decision", tags=["Agent Security Twin"])
+def security_twin_containment_decision(
+    simulation_id: str,
+    request: SecurityTwinContainmentDecisionRequest,
+) -> dict:
+    return decide_security_twin_containment(simulation_id, request)
+
+
+@app.post("/api/security/attack-paths/{simulation_id}/verify", tags=["Agent Security Twin"])
+def verify_security_twin(
+    simulation_id: str,
+    request: SecurityTwinActionRequest,
+) -> dict:
+    return verify_security_twin_containment(simulation_id, request.operator_id)
+
+
+@app.get("/api/security/attack-paths/{simulation_id}/evidence", tags=["Agent Security Twin"])
+def export_security_twin_evidence(simulation_id: str) -> JSONResponse:
+    response = JSONResponse(security_twin_evidence_pack(simulation_id))
+    response.headers["Content-Disposition"] = f'attachment; filename="security-twin-evidence-{simulation_id}.json"'
+    return response
 
 
 @app.get("/api/dashboard")
@@ -1739,9 +2913,204 @@ def enterprise_capabilities(principal: EnterprisePrincipal = Depends(require_rol
         "api_version": "v1",
         "tenant_id": principal.tenant_id,
         "principal": {"subject": principal.subject, "role": principal.role, "key_fingerprint": principal.key_fingerprint},
-        "controls": ["rbac", "tenant-boundary", "idempotency", "pagination", "outbox", "audit-attribution", "knowledge-release-gates", "connector-path-allowlist", "persisted-sync-preview"],
-        "resources": ["control-lifecycles", "data-subject-requests", "knowledge-sources", "knowledge-claims", "knowledge-changes", "knowledge-releases", "knowledge-connectors", "knowledge-graph", "audit-events", "outbox-events"],
+        "controls": ["rbac", "tenant-boundary", "idempotency", "pagination", "outbox", "audit-attribution", "knowledge-release-gates", "connector-path-allowlist", "persisted-sync-preview", "human-authorized-change-proposals", "deterministic-attack-paths", "human-approved-sandbox-containment", "containment-verification"],
+        "resources": ["change-proposals", "security-attack-paths", "security-containments", "control-lifecycles", "data-subject-requests", "knowledge-sources", "knowledge-claims", "knowledge-changes", "knowledge-releases", "knowledge-connectors", "knowledge-graph", "audit-events", "outbox-events"],
     }
+
+
+@app.get("/api/v1/change-proposals", tags=["Enterprise Change Governance"])
+def enterprise_change_proposals(
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    status: str | None = Query(default=None, max_length=40),
+    source_type: str | None = Query(default=None, max_length=40),
+    principal: EnterprisePrincipal = Depends(require_role("viewer")),
+) -> dict:
+    ensure_enterprise_resource_tenant(principal)
+    with SessionLocal() as session:
+        payload = change_proposal_overview(session, status=status, source_type=source_type)
+    items = payload["proposals"]
+    return {
+        "data": items[offset : offset + limit],
+        "pagination": {"limit": limit, "offset": offset, "total": len(items)},
+        "metrics": payload["metrics"],
+        "operating_mode": payload["operating_mode"],
+        "tenant_id": principal.tenant_id,
+    }
+
+
+@app.post("/api/v1/change-proposals/detect", tags=["Enterprise Change Governance"])
+def enterprise_detect_change_proposals(
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    principal: EnterprisePrincipal = Depends(require_role("operator")),
+) -> dict:
+    ensure_enterprise_resource_tenant(principal)
+    return idempotent_enterprise_mutation(
+        principal,
+        "/api/v1/change-proposals/detect",
+        idempotency_key,
+        {},
+        lambda: detect_change_proposals(ChangeProposalDetectionRequest(operator_id=principal.subject)),
+        "change-proposal-inbox",
+        "enterprise.change-proposals.detected",
+        lambda result: {"detection": result["detection"], "metrics": result["metrics"], "execution_state": "not_executed"},
+    )
+
+
+@app.post("/api/v1/change-proposals/{proposal_id}/decisions", tags=["Enterprise Change Governance"])
+def enterprise_change_proposal_decision(
+    proposal_id: str,
+    request: EnterpriseChangeProposalDecisionRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    principal: EnterprisePrincipal = Depends(require_role("approver")),
+) -> dict:
+    ensure_enterprise_resource_tenant(principal)
+    body = request.model_dump()
+    return idempotent_enterprise_mutation(
+        principal,
+        f"/api/v1/change-proposals/{proposal_id}/decisions",
+        idempotency_key,
+        body,
+        lambda: decide_change_proposal(
+            proposal_id,
+            ChangeProposalDecisionRequest(**body, operator_id=principal.subject),
+        ),
+        proposal_id,
+        "enterprise.change-proposal.decided",
+        lambda result: {
+            "proposal_id": result["proposal"]["id"],
+            "status": result["proposal"]["status"],
+            "execution_state": result["proposal"]["execution_state"],
+        },
+    )
+
+
+@app.get("/api/v1/security/attack-paths", tags=["Enterprise Agent Security"])
+def enterprise_security_attack_paths(
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    principal: EnterprisePrincipal = Depends(require_role("viewer")),
+) -> dict:
+    ensure_enterprise_resource_tenant(principal)
+    payload = security_twin_overview()
+    items = payload["simulations"]
+    return {
+        "data": items[offset : offset + limit],
+        "pagination": {"limit": limit, "offset": offset, "total": len(items)},
+        "metrics": payload["metrics"],
+        "operating_mode": payload["operating_mode"],
+        "scenarios": payload["scenarios"],
+        "tenant_id": principal.tenant_id,
+    }
+
+
+@app.post("/api/v1/security/attack-paths/simulate", tags=["Enterprise Agent Security"])
+def enterprise_simulate_security_attack_path(
+    request: EnterpriseSecurityTwinSimulationRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    principal: EnterprisePrincipal = Depends(require_role("operator")),
+) -> dict:
+    ensure_enterprise_resource_tenant(principal)
+    body = request.model_dump()
+    return idempotent_enterprise_mutation(
+        principal,
+        "/api/v1/security/attack-paths/simulate",
+        idempotency_key,
+        body,
+        lambda: simulate_security_twin(SecurityTwinSimulationRequest(**body, operator_id=principal.subject)),
+        "security-twin",
+        "enterprise.security.attack-path.simulated",
+        lambda result: {
+            "simulation_id": result["simulation"]["id"],
+            "scenario_id": result["simulation"]["scenario_id"],
+            "outcome": result["simulation"]["outcome"],
+            "runtime_change_applied": False,
+        },
+    )
+
+
+@app.post("/api/v1/security/attack-paths/{simulation_id}/containment-plan", tags=["Enterprise Agent Security"])
+def enterprise_plan_security_containment(
+    simulation_id: str,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    principal: EnterprisePrincipal = Depends(require_role("operator")),
+) -> dict:
+    ensure_enterprise_resource_tenant(principal)
+    return idempotent_enterprise_mutation(
+        principal,
+        f"/api/v1/security/attack-paths/{simulation_id}/containment-plan",
+        idempotency_key,
+        {},
+        lambda: prepare_security_twin_containment(simulation_id, principal.subject),
+        simulation_id,
+        "enterprise.security.containment.planned",
+        lambda result: {
+            "simulation_id": result["simulation"]["id"],
+            "containment_id": result["simulation"]["containment_plan"]["id"],
+            "state": result["simulation"]["containment_plan"]["state"],
+            "runtime_change_applied": False,
+        },
+    )
+
+
+@app.post("/api/v1/security/containments/{simulation_id}/decisions", tags=["Enterprise Agent Security"])
+def enterprise_decide_security_containment(
+    simulation_id: str,
+    request: EnterpriseSecurityContainmentDecisionRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    principal: EnterprisePrincipal = Depends(require_role("approver")),
+) -> dict:
+    ensure_enterprise_resource_tenant(principal)
+    body = request.model_dump()
+    return idempotent_enterprise_mutation(
+        principal,
+        f"/api/v1/security/containments/{simulation_id}/decisions",
+        idempotency_key,
+        body,
+        lambda: decide_security_twin_containment(
+            simulation_id,
+            SecurityTwinContainmentDecisionRequest(**body, operator_id=principal.subject),
+        ),
+        simulation_id,
+        "enterprise.security.containment.decided",
+        lambda result: {
+            "simulation_id": result["simulation"]["id"],
+            "status": result["simulation"]["status"],
+            "runtime_change_applied": False,
+        },
+    )
+
+
+@app.post("/api/v1/security/attack-paths/{simulation_id}/verify", tags=["Enterprise Agent Security"])
+def enterprise_verify_security_containment(
+    simulation_id: str,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    principal: EnterprisePrincipal = Depends(require_role("operator")),
+) -> dict:
+    ensure_enterprise_resource_tenant(principal)
+    return idempotent_enterprise_mutation(
+        principal,
+        f"/api/v1/security/attack-paths/{simulation_id}/verify",
+        idempotency_key,
+        {},
+        lambda: verify_security_twin_containment(simulation_id, principal.subject),
+        simulation_id,
+        "enterprise.security.containment.verified",
+        lambda result: {
+            "simulation_id": result["simulation"]["id"],
+            "verification": result["verification"],
+            "runtime_change_applied": False,
+        },
+    )
+
+
+@app.get("/api/v1/security/attack-paths/{simulation_id}/evidence", tags=["Enterprise Agent Security"])
+def enterprise_security_twin_evidence(
+    simulation_id: str,
+    principal: EnterprisePrincipal = Depends(require_role("viewer")),
+) -> dict:
+    ensure_enterprise_resource_tenant(principal)
+    return {**security_twin_evidence_pack(simulation_id), "tenant_id": principal.tenant_id}
 
 
 @app.get("/api/v1/control-lifecycles", tags=["Enterprise Lifecycles"])

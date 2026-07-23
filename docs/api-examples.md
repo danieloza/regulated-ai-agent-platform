@@ -576,3 +576,194 @@ curl -s -X POST http://127.0.0.1:8000/api/v1/knowledge/replays \
 ```
 
 Knowledge decisions require the `approver` role and also produce an integration outbox event.
+
+## Governed Change Proposal Inbox
+
+Detect or refresh proposals from the platform's auditable policy, knowledge, evaluation, and approval signals:
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/api/change-proposals/detect \
+  -H "Content-Type: application/json" \
+  -d '{"operator_id":"governance.operator"}'
+```
+
+```json
+{
+  "operating_mode": {
+    "synthesis": "deterministic_rules",
+    "authorization": "human_required",
+    "execution": "not_executed"
+  },
+  "metrics": {
+    "open": 4,
+    "high_priority": 2,
+    "average_evidence_percent": 82,
+    "accepted_for_release": 0
+  },
+  "detection": {
+    "created": 0,
+    "refreshed": 4,
+    "preserved": 0
+  },
+  "proposals": ["..."]
+}
+```
+
+List and filter persistent proposals:
+
+```bash
+curl -s "http://127.0.0.1:8000/api/change-proposals?source_type=knowledge_change&status=new"
+```
+
+Accepting a proposal creates a controlled release handoff. It does not deploy or change runtime behavior:
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/api/change-proposals/gcp_replace_me/decision \
+  -H "Content-Type: application/json" \
+  -d '{
+    "action":"accept_for_release",
+    "operator_id":"risk.approver",
+    "owner":"AI Governance",
+    "comment":"Replay evidence, required approvals, rollout stages, and rollback were reviewed."
+  }'
+```
+
+```json
+{
+  "proposal": {
+    "id": "gcp_replace_me",
+    "status": "accepted_for_release",
+    "execution_state": "not_executed"
+  },
+  "runtime_change_applied": false,
+  "release_handoff": {
+    "candidate_id": "candidate_replace_me",
+    "manifest_digest": "sha256-digest",
+    "state": "awaiting_release_pipeline",
+    "execution_state": "not_executed",
+    "required_approvals": ["AI Risk Owner", "Customer Operations Owner"]
+  }
+}
+```
+
+Enterprise detection requires the `operator` role and an idempotency key:
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/api/v1/change-proposals/detect \
+  -H "Authorization: Bearer $ENTERPRISE_API_KEY" \
+  -H "X-Tenant-ID: demo" \
+  -H "Idempotency-Key: change-detection-20260723-001"
+```
+
+Enterprise decisions require the `approver` role, a unique idempotency key, and a substantive rationale:
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/api/v1/change-proposals/gcp_replace_me/decisions \
+  -H "Authorization: Bearer $ENTERPRISE_API_KEY" \
+  -H "X-Tenant-ID: demo" \
+  -H "Idempotency-Key: change-decision-20260723-001" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "action":"request_evidence",
+    "owner":"AI Governance",
+    "comment":"Add operational baseline evidence before this proposal enters release planning."
+  }'
+```
+
+## Agent Security Twin
+
+Calculate a persisted attack path under a scenario-specific control-failure profile:
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/api/security/attack-paths/simulate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "scenario_id":"tool_scope_escalation",
+    "candidate_profile":"overprivileged_scope",
+    "operator_id":"security.operator"
+  }'
+```
+
+```json
+{
+  "simulation": {
+    "id": "twin_replace_me",
+    "scenario_name": "Tool scope escalation",
+    "candidate_profile": "overprivileged_scope",
+    "outcome": "asset_reached",
+    "severity": "critical",
+    "blast_radius": {
+      "method": "deterministic_scenario_inventory",
+      "candidate": {
+        "reachable_systems": 1,
+        "reachable_records": 18,
+        "data_classes": ["customer case notes", "KYC workflow state"]
+      },
+      "diff": {"systems": 1, "records": 18}
+    },
+    "runtime_change_applied": false
+  },
+  "runtime_change_applied": false
+}
+```
+
+The counts represent configured scenario inventory, not a live production data scan. Prepare a sandbox-only containment plan:
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/api/security/attack-paths/twin_replace_me/containment-plan \
+  -H "Content-Type: application/json" \
+  -d '{"operator_id":"security.operator"}'
+```
+
+Record the separate approver decision:
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/api/security/containments/twin_replace_me/decision \
+  -H "Content-Type: application/json" \
+  -d '{
+    "action":"approve",
+    "operator_id":"security.approver",
+    "comment":"The scoped sandbox actions and verification criteria were reviewed."
+  }'
+```
+
+Replay the original scenario after the approved containment:
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/api/security/attack-paths/twin_replace_me/verify \
+  -H "Content-Type: application/json" \
+  -d '{"operator_id":"security.operator"}'
+```
+
+```json
+{
+  "verification": {
+    "effective": true,
+    "path_broken": true,
+    "before": {"outcome": "asset_reached", "reachable_records": 18},
+    "after": {"outcome": "blocked", "reachable_records": 0}
+  },
+  "runtime_change_applied": false
+}
+```
+
+Export the JSON evidence pack:
+
+```bash
+curl -s http://127.0.0.1:8000/api/security/attack-paths/twin_replace_me/evidence \
+  -o security-twin-evidence.json
+```
+
+The enterprise simulation requires the `operator` role, tenant context, and an idempotency key. Containment decisions require an `approver`.
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/api/v1/security/attack-paths/simulate \
+  -H "Authorization: Bearer $ENTERPRISE_API_KEY" \
+  -H "X-Tenant-ID: demo" \
+  -H "Idempotency-Key: security-simulation-20260723-001" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "scenario_id":"approval_bypass",
+    "candidate_profile":"approval_bypass"
+  }'
+```

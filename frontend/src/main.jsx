@@ -22,19 +22,24 @@ import {
   Gavel,
   Gauge,
   GitCompareArrows,
+  Inbox,
   LockKeyhole,
   KeyRound,
   Layers3,
   Link2,
   MessageSquareText,
+  Network,
   OctagonX,
   Play,
   Plus,
   Presentation,
+  Radar,
   RefreshCw,
   Search,
   ShieldCheck,
   ShieldAlert,
+  ShieldOff,
+  Siren,
   TimerReset,
   Upload,
   UserCheck,
@@ -64,7 +69,9 @@ const sections = [
   ["Governance Registry", "governance-registry", FileSpreadsheet],
   ["Tool Gateway", "tool-gateway", Workflow],
   ["Policy Engine", "policy-engine", Gavel],
+  ["Security Twin", "security-twin", Network],
   ["Risk Intelligence", "risk-intelligence", Gauge],
+  ["Change Proposal Inbox", "change-proposal-inbox", Inbox],
   ["Policy Replay", "policy-replay", GitCompareArrows],
   ["Audit Trail", "audit-trail", Fingerprint],
   ["Human Approval", "human-approval", UserCheck],
@@ -111,12 +118,28 @@ const presentationStories = {
         cue: "Create a case-note approval only if you want a live interaction; otherwise explain the three-way decision workflow.",
       },
       {
+        target: "#change-proposal-inbox .proposal-hero",
+        section: "change-proposal-inbox",
+        eyebrow: "CHANGE GOVERNANCE · SYNTHESIZE",
+        title: "Turn evidence into a controlled proposal",
+        body: "Auditable signals become review-ready hypotheses with provenance, blast radius, evaluation steps, accountable approvals and rollback.",
+        cue: "Open one high-priority proposal. Stress that synthesis can recommend a change, while only an authorized human can create a release handoff.",
+      },
+      {
         target: "#policy-replay .panel-heading",
         section: "policy-replay",
         eyebrow: "05 · Govern change",
         title: "Replay policy before rollout",
         body: "Candidate policies are tested against historical runs and adversarial evaluations before they can change production behavior.",
         cue: "Emphasize regression risk: which safe requests would be blocked, and which unsafe requests might become allowed?",
+      },
+      {
+        target: "#security-twin .security-twin-hero",
+        section: "security-twin",
+        eyebrow: "06 · PROVE THE BOUNDARY",
+        title: "Reconstruct attack paths and blast radius",
+        body: "Security Twin traces a modeled attack across knowledge, policy, permissions, approvals and business systems, then proves that approved containment breaks the path.",
+        cue: "Select Tool scope escalation. Compare current controls with the overprivileged profile, then show the containment verification and evidence digest.",
       },
       {
         target: "#knowledge-control-center .knowledge-hero",
@@ -185,6 +208,14 @@ const presentationStories = {
         cue: "Run the secret-exfiltration sample and point out that the agent has no shell, secrets or direct database credentials.",
       },
       {
+        target: "#security-twin .security-twin-hero",
+        section: "security-twin",
+        eyebrow: "04 · SECURITY ARCHITECTURE",
+        title: "Calculate the attack path, not only a score",
+        body: "A deterministic reachability engine identifies the exact control that stops an agent-originated attack and calculates the modeled blast-radius delta when that control fails.",
+        cue: "Explain the trust model: the graph comes from configured scenarios and controls; an LLM cannot invent reachability or authorize containment.",
+      },
+      {
         target: "#tool-gateway",
         section: "tool-gateway",
         eyebrow: "04 · Capability design",
@@ -217,6 +248,14 @@ const presentationStories = {
         title: "Inspect the governance graph",
         body: "The graph joins connectors, notes, sources, changes, claims, releases and historical runs without overstating inferred relationships.",
         cue: "Discuss the data model and why authoritative provenance is separated from lexical run overlap.",
+      },
+      {
+        target: "#change-proposal-inbox .proposal-hero",
+        section: "change-proposal-inbox",
+        eyebrow: "CHANGE GOVERNANCE · CONTROLLED HANDOFF",
+        title: "Inspect governed proposal synthesis",
+        body: "Deterministic rules turn policy, knowledge, evaluation and approval signals into persistent proposals without granting the agent change authority.",
+        cue: "Walk from source evidence through the component diff and rollback contract. Accept for release is a state transition, never a deployment.",
       },
       {
         target: "#policy-replay .panel-heading",
@@ -258,6 +297,82 @@ function controlLifecycleIcon(kind) {
   return <FileText size={18} />;
 }
 
+function securityTwinNodeIcon(type) {
+  if (type === "identity") return <Fingerprint size={17} />;
+  if (type === "knowledge") return <FileText size={17} />;
+  if (type === "control") return <ShieldCheck size={17} />;
+  if (type === "tool") return <Workflow size={17} />;
+  if (type === "asset") return <Database size={17} />;
+  if (type === "workflow") return <UserCheck size={17} />;
+  return <Activity size={17} />;
+}
+
+function SecurityTwinGraph({ path }) {
+  const nodes = path?.nodes ?? [];
+  const edges = path?.edges ?? [];
+  const yByType = {
+    identity: 226,
+    knowledge: 92,
+    runtime: 164,
+    control: 104,
+    workflow: 150,
+    tool: 218,
+    asset: 238,
+  };
+  const positions = new Map(nodes.map((node, index) => [
+    node.id,
+    {
+      x: nodes.length === 1 ? 500 : 76 + (index * 848) / (nodes.length - 1),
+      y: yByType[node.type] ?? 164,
+    },
+  ]));
+
+  return (
+    <div className="security-graph" aria-label="Calculated agent attack path">
+      <div className="security-graph-canvas" aria-hidden="true">
+        <svg viewBox="0 0 1000 330" preserveAspectRatio="none">
+          {edges.map((edge) => {
+            const source = positions.get(edge.source);
+            const target = positions.get(edge.target);
+            if (!source || !target) return null;
+            const bend = Math.max(36, (target.x - source.x) * 0.42);
+            return (
+              <path
+                className={`security-graph-edge ${edge.state}`}
+                d={`M ${source.x} ${source.y} C ${source.x + bend} ${source.y}, ${target.x - bend} ${target.y}, ${target.x} ${target.y}`}
+                key={edge.id}
+              />
+            );
+          })}
+        </svg>
+        {nodes.map((node) => {
+          const position = positions.get(node.id);
+          return (
+            <div
+              className={`security-graph-node ${node.type} ${node.state}`}
+              key={node.id}
+              style={{ left: `${position.x / 10}%`, top: `${position.y}px` }}
+              title={`${node.label}: ${node.state.replaceAll("_", " ")}`}
+            >
+              <span>{securityTwinNodeIcon(node.type)}</span>
+              <strong>{node.label}</strong>
+              <small>{node.state.replaceAll("_", " ")}</small>
+            </div>
+          );
+        })}
+      </div>
+      <ol className="security-graph-accessible">
+        {nodes.map((node) => (
+          <li className={node.state} key={node.id}>
+            {securityTwinNodeIcon(node.type)}
+            <span><strong>{node.label}</strong><small>{node.state.replaceAll("_", " ")}</small></span>
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
 function App() {
   const [dashboard, setDashboard] = useState(null);
   const [query, setQuery] = useState(sampleQueries[0]);
@@ -274,6 +389,19 @@ function App() {
   const [uploadContent, setUploadContent] = useState("AI assistants must not reveal secrets or execute shell commands from retrieved documents.");
   const [uploadResult, setUploadResult] = useState(null);
   const [policyReplay, setPolicyReplay] = useState(null);
+  const [securityTwin, setSecurityTwin] = useState(null);
+  const [selectedSecurityScenarioId, setSelectedSecurityScenarioId] = useState("tool_scope_escalation");
+  const [selectedSecuritySimulationId, setSelectedSecuritySimulationId] = useState("");
+  const [securityTwinBusy, setSecurityTwinBusy] = useState("");
+  const [securityGraphView, setSecurityGraphView] = useState("candidate");
+  const [containmentComment, setContainmentComment] = useState("Reviewed the modeled path, scoped sandbox actions, owners, and verification criteria.");
+  const [changeProposals, setChangeProposals] = useState(null);
+  const [selectedProposalId, setSelectedProposalId] = useState("");
+  const [proposalSourceFilter, setProposalSourceFilter] = useState("all");
+  const [proposalStatusFilter, setProposalStatusFilter] = useState("all");
+  const [proposalBusy, setProposalBusy] = useState("");
+  const [proposalOwner, setProposalOwner] = useState("AI Governance");
+  const [proposalComment, setProposalComment] = useState("Reviewed the evidence, blast radius, approvals, and rollback plan.");
   const [riskFilter, setRiskFilter] = useState("all");
   const [riskSort, setRiskSort] = useState("score");
   const [governance, setGovernance] = useState(null);
@@ -376,6 +504,165 @@ function App() {
       setGovernance(await response.json());
     } catch (error) {
       setErrorMessage(error.message);
+    }
+  }
+
+  async function loadChangeProposals() {
+    try {
+      const response = await fetch(`${API}/api/change-proposals`);
+      if (!response.ok) throw new Error(`Change proposal request failed: ${response.status}`);
+      const payload = await response.json();
+      setChangeProposals(payload);
+      setSelectedProposalId((current) => (
+        payload.proposals.some((item) => item.id === current) ? current : payload.proposals[0]?.id ?? ""
+      ));
+    } catch (error) {
+      setErrorMessage(error.message);
+    }
+  }
+
+  async function loadSecurityTwin(simulationId = "") {
+    try {
+      const suffix = simulationId ? `?simulation_id=${encodeURIComponent(simulationId)}` : "";
+      const response = await fetch(`${API}/api/security/attack-paths${suffix}`);
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload?.error?.message ?? payload?.detail ?? `Security Twin request failed: ${response.status}`);
+      setSecurityTwin(payload);
+      if (payload.selected) {
+        setSelectedSecuritySimulationId(payload.selected.id);
+        setSelectedSecurityScenarioId(payload.selected.scenario_id);
+      }
+    } catch (error) {
+      setErrorMessage(error.message);
+    }
+  }
+
+  async function simulateSecurityTwin(candidateProfile) {
+    setSecurityTwinBusy(`simulate-${candidateProfile}`);
+    setErrorMessage("");
+    setStatusMessage("");
+    try {
+      const response = await fetch(`${API}/api/security/attack-paths/simulate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          scenario_id: selectedSecurityScenarioId,
+          candidate_profile: candidateProfile,
+          operator_id: "security.operator",
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload?.error?.message ?? payload?.detail ?? `Security simulation failed: ${response.status}`);
+      setSecurityGraphView("candidate");
+      await loadSecurityTwin(payload.simulation.id);
+      setStatusMessage(
+        payload.simulation.outcome === "asset_reached"
+          ? `Attack path reached modeled assets: ${payload.simulation.blast_radius.candidate.reachable_records} records require containment review.`
+          : `Attack path blocked at ${payload.simulation.controls.find((item) => item.state === "enforced")?.name ?? "a governed control"}.`,
+      );
+    } catch (error) {
+      setErrorMessage(error.message);
+    } finally {
+      setSecurityTwinBusy("");
+    }
+  }
+
+  async function prepareSecurityContainment() {
+    if (!selectedSecuritySimulationId) return;
+    setSecurityTwinBusy("plan");
+    setErrorMessage("");
+    try {
+      const response = await fetch(`${API}/api/security/attack-paths/${selectedSecuritySimulationId}/containment-plan`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ operator_id: "security.operator" }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload?.error?.message ?? payload?.detail ?? `Containment planning failed: ${response.status}`);
+      await loadSecurityTwin(selectedSecuritySimulationId);
+      setStatusMessage("Sandbox containment plan prepared. An authorized approver must decide before verification.");
+    } catch (error) {
+      setErrorMessage(error.message);
+    } finally {
+      setSecurityTwinBusy("");
+    }
+  }
+
+  async function decideSecurityContainment(action) {
+    if (!selectedSecuritySimulationId) return;
+    setSecurityTwinBusy(`decision-${action}`);
+    setErrorMessage("");
+    try {
+      const response = await fetch(`${API}/api/security/containments/${selectedSecuritySimulationId}/decision`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action,
+          operator_id: "security.approver",
+          comment: containmentComment,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload?.error?.message ?? payload?.detail ?? `Containment decision failed: ${response.status}`);
+      await loadSecurityTwin(selectedSecuritySimulationId);
+      setStatusMessage(
+        action === "approve"
+          ? "Sandbox containment approved. Runtime controls remain unchanged until an external release process."
+          : "Containment denied and recorded in the evidence trail.",
+      );
+    } catch (error) {
+      setErrorMessage(error.message);
+    } finally {
+      setSecurityTwinBusy("");
+    }
+  }
+
+  async function verifySecurityContainment() {
+    if (!selectedSecuritySimulationId) return;
+    setSecurityTwinBusy("verify");
+    setErrorMessage("");
+    try {
+      const response = await fetch(`${API}/api/security/attack-paths/${selectedSecuritySimulationId}/verify`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ operator_id: "security.operator" }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload?.error?.message ?? payload?.detail ?? `Containment verification failed: ${response.status}`);
+      setSecurityGraphView("verified");
+      await loadSecurityTwin(selectedSecuritySimulationId);
+      setStatusMessage(
+        payload.verification.path_broken
+          ? "Containment proof complete: the previously reachable path is now broken."
+          : "Control restoration verified against the modeled path.",
+      );
+    } catch (error) {
+      setErrorMessage(error.message);
+    } finally {
+      setSecurityTwinBusy("");
+    }
+  }
+
+  async function downloadSecurityEvidence() {
+    if (!selectedSecuritySimulationId) return;
+    setSecurityTwinBusy("evidence");
+    try {
+      const response = await fetch(`${API}/api/security/attack-paths/${selectedSecuritySimulationId}/evidence`);
+      if (!response.ok) throw new Error(`Security evidence export failed: ${response.status}`);
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `security-twin-evidence-${selectedSecuritySimulationId}.json`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      setStatusMessage("Security Twin evidence pack exported.");
+    } catch (error) {
+      setErrorMessage(error.message);
+    } finally {
+      setSecurityTwinBusy("");
     }
   }
 
@@ -748,6 +1035,8 @@ function App() {
     refresh();
     loadAttacks();
     loadGovernance();
+    loadChangeProposals();
+    loadSecurityTwin();
     loadLifecycle();
     loadDataSubject();
     loadControlLifecycles();
@@ -918,6 +1207,59 @@ function App() {
     }
   }
 
+  async function detectChangeProposals() {
+    setProposalBusy("detect");
+    setErrorMessage("");
+    try {
+      const response = await fetch(`${API}/api/change-proposals/detect`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ operator_id: "governance.operator" }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload?.detail ?? `Proposal detection failed: ${response.status}`);
+      setChangeProposals(payload);
+      setSelectedProposalId((current) => (
+        payload.proposals.some((item) => item.id === current) ? current : payload.proposals[0]?.id ?? ""
+      ));
+      setStatusMessage(`Proposal detection completed: ${payload.detection.created} created, ${payload.detection.refreshed} refreshed, no runtime changes applied.`);
+    } catch (error) {
+      setErrorMessage(error.message);
+    } finally {
+      setProposalBusy("");
+    }
+  }
+
+  async function decideProposal(action) {
+    if (!selectedProposal?.id) return;
+    setProposalBusy(action);
+    setErrorMessage("");
+    try {
+      const response = await fetch(`${API}/api/change-proposals/${selectedProposal.id}/decision`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action,
+          operator_id: "governance.operator",
+          comment: proposalComment,
+          owner: proposalOwner,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload?.detail ?? `Proposal decision failed: ${response.status}`);
+      await loadChangeProposals();
+      setStatusMessage(
+        action === "accept_for_release"
+          ? `${payload.proposal.id} accepted for a controlled release handoff; runtime execution remains blocked.`
+          : `${payload.proposal.id} marked ${payload.proposal.status}; no runtime changes applied.`,
+      );
+    } catch (error) {
+      setErrorMessage(error.message);
+    } finally {
+      setProposalBusy("");
+    }
+  }
+
   async function downloadGovernanceTemplate() {
     setGovernanceBusy("download");
     setErrorMessage("");
@@ -991,6 +1333,30 @@ function App() {
   }
 
   const events = useMemo(() => run?.audit ?? dashboard?.audit ?? [], [run, dashboard]);
+  const selectedSecurityScenario = useMemo(
+    () => securityTwin?.scenarios?.find((item) => item.id === selectedSecurityScenarioId) ?? securityTwin?.scenarios?.[0] ?? null,
+    [securityTwin, selectedSecurityScenarioId],
+  );
+  const selectedSecuritySimulation = useMemo(
+    () => (securityTwin?.simulations ?? []).find((item) => item.id === selectedSecuritySimulationId) ?? null,
+    [securityTwin, selectedSecuritySimulationId],
+  );
+  const displayedSecurityPath = useMemo(() => {
+    if (
+      securityGraphView === "verified"
+      && selectedSecuritySimulation?.verification?.after?.nodes
+    ) {
+      return {
+        nodes: selectedSecuritySimulation.verification.after.nodes,
+        edges: selectedSecuritySimulation.verification.after.edges,
+        steps: selectedSecuritySimulation.verification.after.steps,
+        controls: selectedSecuritySimulation.verification.after.controls,
+        outcome: selectedSecuritySimulation.verification.after.outcome,
+        severity: "low",
+      };
+    }
+    return selectedSecuritySimulation;
+  }, [selectedSecuritySimulation, securityGraphView]);
   const riskRuns = useMemo(() => {
     const filtered = (dashboard?.risk_runs ?? []).filter((item) => riskFilter === "all" || item.level === riskFilter);
     return [...filtered].sort((left, right) => (
@@ -999,6 +1365,20 @@ function App() {
         : right.score - left.score || new Date(right.created_at).getTime() - new Date(left.created_at).getTime()
     ));
   }, [dashboard, riskFilter, riskSort]);
+  const filteredProposals = useMemo(
+    () => (changeProposals?.proposals ?? []).filter((item) => (
+      (proposalSourceFilter === "all" || item.source_type === proposalSourceFilter)
+      && (proposalStatusFilter === "all" || item.status === proposalStatusFilter)
+    )),
+    [changeProposals, proposalSourceFilter, proposalStatusFilter],
+  );
+  const selectedProposal = useMemo(
+    () => filteredProposals.find((item) => item.id === selectedProposalId) ?? filteredProposals[0] ?? null,
+    [filteredProposals, selectedProposalId],
+  );
+  useEffect(() => {
+    if (selectedProposal) setProposalOwner(selectedProposal.owner);
+  }, [selectedProposal?.id]);
   const selectedControl = useMemo(
     () => controlLifecycles?.lifecycles?.find((item) => item.kind === selectedControlKind) ?? null,
     [controlLifecycles, selectedControlKind],
@@ -1755,6 +2135,234 @@ function App() {
             </div>
           </section>
 
+          <section className="panel security-twin-panel" id="security-twin">
+            <div className="security-twin-hero">
+              <div>
+                <span className="security-twin-kicker"><Network size={15} /> AGENT SECURITY DIGITAL TWIN</span>
+                <h2>Agent Attack Path &amp; Blast Radius</h2>
+                <p>Reconstruct how an AI-originated attack can traverse knowledge, policy, permissions, approvals and enterprise systems—then prove that approved containment breaks the path.</p>
+              </div>
+              <div className="security-twin-hero-actions">
+                <button
+                  type="button"
+                  disabled={Boolean(securityTwinBusy) || !selectedSecurityScenario}
+                  onClick={() => simulateSecurityTwin("current")}
+                >
+                  <ShieldCheck size={16} />
+                  Run current controls
+                </button>
+                <button
+                  className="danger"
+                  type="button"
+                  disabled={Boolean(securityTwinBusy) || !selectedSecurityScenario}
+                  onClick={() => simulateSecurityTwin(selectedSecurityScenario?.failure_profile)}
+                >
+                  <ShieldOff size={16} />
+                  {securityTwinBusy.startsWith("simulate") ? "Calculating path..." : "Simulate control failure"}
+                </button>
+                <button type="button" disabled={!selectedSecuritySimulation || Boolean(securityTwinBusy)} onClick={downloadSecurityEvidence}>
+                  <Download size={16} />
+                  Export evidence
+                </button>
+              </div>
+            </div>
+
+            <div className="security-twin-boundary" role="note">
+              <LockKeyhole size={18} />
+              <div>
+                <strong>Deterministic reachability · human-authorized containment</strong>
+                <p>{securityTwin?.operating_mode?.statement ?? "Security Twin calculates configured paths and cannot mutate runtime authority."}</p>
+              </div>
+              <span>runtime execution blocked</span>
+            </div>
+
+            <div className="security-twin-metrics" aria-label="Security Twin metrics">
+              <Metric label="Modeled scenarios" value={securityTwin?.metrics?.scenarios ?? "—"} />
+              <Metric label="Open attack paths" value={securityTwin?.metrics?.open_attack_paths ?? "—"} tone={(securityTwin?.metrics?.open_attack_paths ?? 0) ? "red" : "default"} />
+              <Metric label="Records at risk" value={securityTwin?.metrics?.modeled_records_at_risk ?? "—"} tone={(securityTwin?.metrics?.modeled_records_at_risk ?? 0) ? "amber" : "default"} />
+              <Metric label="Verified containments" value={securityTwin?.metrics?.verified_containments ?? "—"} />
+            </div>
+
+            <div className="security-twin-workspace">
+              <aside className="security-scenario-rail">
+                <div className="security-twin-column-heading">
+                  <div><Siren size={16} /><strong>Attack scenarios</strong></div>
+                  <span>4 deterministic paths</span>
+                </div>
+                <div className="security-scenario-list">
+                  {(securityTwin?.scenarios ?? []).map((scenario) => {
+                    const latest = securityTwin.simulations.find((item) => item.scenario_id === scenario.id);
+                    return (
+                      <button
+                        type="button"
+                        className={selectedSecurityScenarioId === scenario.id ? "active" : ""}
+                        key={scenario.id}
+                        onClick={() => {
+                          setSelectedSecurityScenarioId(scenario.id);
+                          setSecurityGraphView("candidate");
+                          if (latest) {
+                            setSelectedSecuritySimulationId(latest.id);
+                          } else {
+                            setSelectedSecuritySimulationId("");
+                          }
+                        }}
+                      >
+                        <span className={`security-scenario-severity ${scenario.severity}`}>{scenario.severity}</span>
+                        <strong>{scenario.name}</strong>
+                        <p>{scenario.summary}</p>
+                        <div><span>{scenario.attack_family}</span>{latest && <code>{latest.outcome.replaceAll("_", " ")}</code>}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </aside>
+
+              <article className="security-path-stage">
+                <div className="security-path-heading">
+                  <div>
+                    <span>CALCULATED ATTACK PATH</span>
+                    <h3>{selectedSecuritySimulation?.scenario_name ?? selectedSecurityScenario?.name ?? "Select a scenario"}</h3>
+                    <p>{selectedSecuritySimulation?.summary ?? selectedSecurityScenario?.summary}</p>
+                  </div>
+                  {selectedSecuritySimulation && (
+                    <div className="security-path-state">
+                      <span className={`security-outcome ${displayedSecurityPath?.outcome}`}>
+                        {displayedSecurityPath?.outcome === "asset_reached" ? <ShieldAlert size={15} /> : <ShieldCheck size={15} />}
+                        {displayedSecurityPath?.outcome?.replaceAll("_", " ")}
+                      </span>
+                      <code>{selectedSecuritySimulation.candidate_profile_label}</code>
+                    </div>
+                  )}
+                </div>
+
+                {selectedSecuritySimulation ? (
+                  <>
+                    <div className="security-blast-diff">
+                      <div><span>Reachable systems</span><strong>0 <ArrowRight size={14} /> {selectedSecuritySimulation.blast_radius.candidate.reachable_systems}</strong></div>
+                      <div><span>Reachable records</span><strong>0 <ArrowRight size={14} /> {selectedSecuritySimulation.blast_radius.candidate.reachable_records}</strong></div>
+                      <div><span>Candidate severity</span><strong className={selectedSecuritySimulation.severity}>{selectedSecuritySimulation.severity}</strong></div>
+                      <small>{selectedSecuritySimulation.blast_radius.statement}</small>
+                    </div>
+
+                    {selectedSecuritySimulation.verification?.effective && (
+                      <div className="security-graph-toggle" aria-label="Attack path view">
+                        <button className={securityGraphView === "candidate" ? "active" : ""} type="button" onClick={() => setSecurityGraphView("candidate")}>Before containment</button>
+                        <button className={securityGraphView === "verified" ? "active" : ""} type="button" onClick={() => setSecurityGraphView("verified")}><CheckCircle2 size={14} />After verification</button>
+                      </div>
+                    )}
+
+                    <SecurityTwinGraph path={displayedSecurityPath} />
+
+                    <div className="security-graph-legend" aria-label="Attack path states">
+                      <span><i className="reached" />reached</span>
+                      <span><i className="blocked" />blocked</span>
+                      <span><i className="not-reachable" />not reachable</span>
+                      <code>digest {selectedSecuritySimulation.evidence_digest.slice(0, 14)}…</code>
+                    </div>
+
+                    <div className="security-path-timeline">
+                      {(displayedSecurityPath?.steps ?? []).map((step) => (
+                        <div className={`security-path-step ${step.state}`} key={`${step.sequence}-${step.node_id}`}>
+                          <span>{step.sequence}</span>
+                          <div><strong>{step.label}</strong><small>{step.control_id} · {step.control_name}</small></div>
+                          <i>{step.state.replaceAll("_", " ")}</i>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <div className="security-twin-empty">
+                    <Network size={26} />
+                    <strong>No path calculated for this scenario</strong>
+                    <p>Run current controls or simulate the scenario-specific control failure.</p>
+                  </div>
+                )}
+              </article>
+
+              <aside className="security-containment-rail">
+                <div className="security-twin-column-heading">
+                  <div><LockKeyhole size={16} /><strong>Containment proof</strong></div>
+                  <span>approver required</span>
+                </div>
+
+                {!selectedSecuritySimulation ? (
+                  <div className="security-containment-empty">
+                    <ShieldCheck size={22} />
+                    <strong>Awaiting simulation</strong>
+                    <p>Containment is generated only from a persisted attack path.</p>
+                  </div>
+                ) : selectedSecuritySimulation.candidate_profile === "current" ? (
+                  <div className="security-containment-empty safe">
+                    <ShieldCheck size={22} />
+                    <strong>Current path is contained</strong>
+                    <p>Run the candidate control-failure profile to calculate residual exposure.</p>
+                  </div>
+                ) : (
+                  <div className="security-containment-body">
+                    <div className={`security-containment-status ${selectedSecuritySimulation.status}`}>
+                      <span>{selectedSecuritySimulation.status.replaceAll("_", " ")}</span>
+                      <strong>{selectedSecuritySimulation.runtime_change_applied ? "runtime changed" : "runtime unchanged"}</strong>
+                    </div>
+
+                    {selectedSecuritySimulation.containment_plan?.actions?.length ? (
+                      <div className="security-containment-actions">
+                        <span>Controlled action plan</span>
+                        {selectedSecuritySimulation.containment_plan.actions.map((action, index) => (
+                          <div key={action.id}>
+                            <i>{index + 1}</i>
+                            <p><strong>{action.label}</strong><small>{action.owner}</small></p>
+                            <span className={action.state}>{action.state}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="security-containment-summary">
+                        <ShieldAlert size={18} />
+                        <p><strong>Modeled exposure requires review</strong><span>Generate a scoped plan. Nothing will be applied to runtime controls.</span></p>
+                      </div>
+                    )}
+
+                    {!selectedSecuritySimulation.containment_plan?.id && (
+                      <button className="security-containment-primary" type="button" disabled={Boolean(securityTwinBusy)} onClick={prepareSecurityContainment}>
+                        <Layers3 size={16} />Generate containment plan
+                      </button>
+                    )}
+
+                    {selectedSecuritySimulation.status === "containment_pending" && (
+                      <>
+                        <label className="security-containment-comment">
+                          <span>Approver rationale</span>
+                          <textarea rows="4" value={containmentComment} onChange={(event) => setContainmentComment(event.target.value)} />
+                        </label>
+                        <div className="security-containment-decisions">
+                          <button type="button" disabled={Boolean(securityTwinBusy)} onClick={() => decideSecurityContainment("deny")}><X size={15} />Deny</button>
+                          <button className="approve" type="button" disabled={Boolean(securityTwinBusy)} onClick={() => decideSecurityContainment("approve")}><UserCheck size={15} />Approve sandbox plan</button>
+                        </div>
+                      </>
+                    )}
+
+                    {selectedSecuritySimulation.status === "containment_approved" && (
+                      <button className="security-containment-primary verify" type="button" disabled={Boolean(securityTwinBusy)} onClick={verifySecurityContainment}>
+                        <RefreshCw className={securityTwinBusy === "verify" ? "spin" : ""} size={16} />Replay and verify containment
+                      </button>
+                    )}
+
+                    {selectedSecuritySimulation.verification?.effective && (
+                      <div className="security-containment-proof">
+                        <CheckCircle2 size={24} />
+                        <div>
+                          <span>CONTAINMENT EFFECTIVE</span>
+                          <strong>{selectedSecuritySimulation.verification.path_broken ? "Attack path broken" : "Control boundary restored"}</strong>
+                          <p>{selectedSecuritySimulation.verification.before.reachable_records} → {selectedSecuritySimulation.verification.after.reachable_records} reachable records</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </aside>
+            </div>
+          </section>
+
           <section className="panel risk-panel" id="risk-intelligence">
             <div className="panel-heading risk-heading">
               <div>
@@ -1814,6 +2422,197 @@ function App() {
                 </tbody>
               </table>
               {riskRuns.length === 0 && <div className="risk-empty"><ShieldAlert size={18} />No runs match the selected risk level.</div>}
+            </div>
+          </section>
+
+          <section className="panel proposal-panel" id="change-proposal-inbox">
+            <div className="proposal-hero">
+              <div className="proposal-hero-copy">
+                <span className="proposal-kicker"><Radar size={15} /> CONTROLLED CHANGE INTELLIGENCE</span>
+                <h2>Governed Change Proposal Inbox</h2>
+                <p>Convert replay, knowledge, evaluation, and workflow signals into evidence-backed proposals before release planning begins.</p>
+              </div>
+              <button className="proposal-detect" type="button" disabled={Boolean(proposalBusy)} onClick={detectChangeProposals}>
+                <Radar className={proposalBusy === "detect" ? "spin" : ""} size={17} />
+                {proposalBusy === "detect" ? "Detecting signals..." : "Detect proposals"}
+              </button>
+            </div>
+
+            <div className="proposal-safety" role="note">
+              <ShieldCheck size={18} />
+              <div>
+                <strong>Human-authorized operating mode</strong>
+                <p>{changeProposals?.operating_mode?.statement ?? "Signals may create review proposals; no proposal can change runtime controls automatically."}</p>
+              </div>
+              <span>execution: blocked</span>
+            </div>
+
+            <div className="proposal-metrics" aria-label="Change proposal metrics">
+              <Metric label="Open proposals" value={changeProposals?.metrics?.open ?? "â€”"} />
+              <Metric label="High priority" value={changeProposals?.metrics?.high_priority ?? "â€”"} tone={(changeProposals?.metrics?.high_priority ?? 0) ? "amber" : "default"} />
+              <Metric label="Evidence complete" value={changeProposals ? `${changeProposals.metrics.average_evidence_percent}%` : "â€”"} />
+              <Metric label="Release handoffs" value={changeProposals?.metrics?.accepted_for_release ?? "â€”"} />
+            </div>
+
+            <div className="proposal-filters">
+              <label>
+                <span>Signal source</span>
+                <select value={proposalSourceFilter} onChange={(event) => setProposalSourceFilter(event.target.value)}>
+                  <option value="all">All sources</option>
+                  {(changeProposals?.filters?.source_types ?? []).map((source) => <option value={source} key={source}>{source.replaceAll("_", " ")}</option>)}
+                </select>
+              </label>
+              <label>
+                <span>Workflow status</span>
+                <select value={proposalStatusFilter} onChange={(event) => setProposalStatusFilter(event.target.value)}>
+                  <option value="all">All statuses</option>
+                  {(changeProposals?.filters?.statuses ?? []).map((status) => <option value={status} key={status}>{status.replaceAll("_", " ")}</option>)}
+                </select>
+              </label>
+              <span className="proposal-filter-count">{filteredProposals.length} matched</span>
+            </div>
+
+            <div className="proposal-workspace">
+              <div className="proposal-queue" aria-label="Change proposal queue">
+                <div className="proposal-column-heading">
+                  <div><Inbox size={16} /><strong>Review queue</strong></div>
+                  <span>priority ordered</span>
+                </div>
+                <div className="proposal-list">
+                  {filteredProposals.map((item) => (
+                    <button
+                      className={`proposal-list-item ${selectedProposal?.id === item.id ? "active" : ""}`}
+                      type="button"
+                      key={item.id}
+                      onClick={() => {
+                        setSelectedProposalId(item.id);
+                        setProposalOwner(item.owner);
+                      }}
+                    >
+                      <span className={`proposal-severity ${item.severity}`}>{item.severity}</span>
+                      <strong>{item.title}</strong>
+                      <p>{item.trigger}</p>
+                      <div>
+                        <span>{item.source_type.replaceAll("_", " ")}</span>
+                        <span>{item.status.replaceAll("_", " ")}</span>
+                      </div>
+                    </button>
+                  ))}
+                  {!filteredProposals.length && <div className="proposal-empty"><Inbox size={20} /><strong>No proposals match these filters.</strong></div>}
+                </div>
+              </div>
+
+              {selectedProposal ? (
+                <>
+                  <article className="proposal-detail">
+                    <div className="proposal-detail-heading">
+                      <div>
+                        <div className="proposal-meta-row">
+                          <span className={`proposal-severity ${selectedProposal.severity}`}>{selectedProposal.severity}</span>
+                          <span>{selectedProposal.component_type}</span>
+                          <code>{selectedProposal.id}</code>
+                        </div>
+                        <h3>{selectedProposal.title}</h3>
+                        <p>{selectedProposal.summary}</p>
+                      </div>
+                      <span className={`proposal-status ${selectedProposal.status}`}>{selectedProposal.status.replaceAll("_", " ")}</span>
+                    </div>
+
+                    <div className="proposal-confidence">
+                      <div>
+                        <span>Confidence</span>
+                        <strong>{selectedProposal.confidence_percent}%</strong>
+                        <i><b style={{ width: `${selectedProposal.confidence_percent}%` }} /></i>
+                      </div>
+                      <div>
+                        <span>Evidence completeness</span>
+                        <strong>{selectedProposal.evidence_completeness_percent}%</strong>
+                        <i><b style={{ width: `${selectedProposal.evidence_completeness_percent}%` }} /></i>
+                      </div>
+                      <div><span>Affected runs</span><strong>{selectedProposal.affected_runs}</strong></div>
+                      <div><span>Expected risk reduction</span><strong>{selectedProposal.expected_risk_reduction_percent}%</strong></div>
+                    </div>
+
+                    <div className="proposal-narrative">
+                      <div><span>Observed trigger</span><p>{selectedProposal.trigger}</p></div>
+                      <div><span>Testable hypothesis</span><p>{selectedProposal.hypothesis}</p></div>
+                    </div>
+
+                    <div className="proposal-diff">
+                      <div className="proposal-diff-heading"><GitCompareArrows size={16} /><strong>Proposed component diff</strong></div>
+                      <div>
+                        <article><span>CURRENT</span><p>{selectedProposal.proposed_diff.current}</p></article>
+                        <ArrowRight size={18} />
+                        <article><span>CANDIDATE</span><p>{selectedProposal.proposed_diff.candidate}</p></article>
+                      </div>
+                    </div>
+
+                    <div className="proposal-evidence">
+                      <div className="proposal-subheading"><Fingerprint size={15} /><strong>Evidence and provenance</strong></div>
+                      {selectedProposal.evidence.map((item) => (
+                        <div className="proposal-evidence-row" key={item.label}>
+                          <span>{item.label}</span><strong>{item.value}</strong><i className={item.state}>{item.state}</i>
+                        </div>
+                      ))}
+                      <div className="proposal-source-refs">
+                        {selectedProposal.source_refs.slice(0, 5).map((item) => <code key={item}>{item}</code>)}
+                      </div>
+                    </div>
+
+                    <div className="proposal-plan-grid">
+                      <div>
+                        <span>Evaluation plan</span>
+                        <ol>{selectedProposal.evaluation_plan.map((item) => <li key={item}>{item}</li>)}</ol>
+                      </div>
+                      <div>
+                        <span>Controlled rollout</span>
+                        <ol>{selectedProposal.rollout_plan.map((item) => <li key={item}>{item}</li>)}</ol>
+                      </div>
+                    </div>
+                  </article>
+
+                  <aside className="proposal-decision">
+                    <div className="proposal-column-heading">
+                      <div><Gavel size={16} /><strong>Decision control</strong></div>
+                      <span>operator required</span>
+                    </div>
+                    <div className="proposal-decision-body">
+                      <div className="proposal-guardrail"><LockKeyhole size={17} /><p>Accepting creates a release handoff only. It cannot deploy or mutate runtime policy.</p></div>
+                      <label>
+                        <span>Accountable owner</span>
+                        <input value={proposalOwner} onChange={(event) => setProposalOwner(event.target.value)} disabled={["accepted_for_release", "dismissed"].includes(selectedProposal.status)} />
+                      </label>
+                      <label>
+                        <span>Operator rationale</span>
+                        <textarea value={proposalComment} onChange={(event) => setProposalComment(event.target.value)} rows="5" disabled={["accepted_for_release", "dismissed"].includes(selectedProposal.status)} />
+                      </label>
+                      <div className="proposal-approvals">
+                        <span>Required approvals</span>
+                        {selectedProposal.required_approvals.map((item) => <div key={item}><UserCheck size={14} />{item}</div>)}
+                      </div>
+                      <div className="proposal-rollback">
+                        <span>Rollback contract</span>
+                        <p>{selectedProposal.rollback_plan}</p>
+                      </div>
+                      {!["accepted_for_release", "dismissed"].includes(selectedProposal.status) ? (
+                        <div className="proposal-decision-actions">
+                          <button type="button" disabled={Boolean(proposalBusy)} onClick={() => decideProposal("assign")}><UserCheck size={15} />Assign</button>
+                          <button type="button" disabled={Boolean(proposalBusy)} onClick={() => decideProposal("request_evidence")}><Search size={15} />Request evidence</button>
+                          <button type="button" disabled={Boolean(proposalBusy)} onClick={() => decideProposal("dismiss")}><X size={15} />Dismiss</button>
+                          <button className="primary" type="button" disabled={Boolean(proposalBusy)} onClick={() => decideProposal("accept_for_release")}><CheckCircle2 size={15} />Accept for release</button>
+                        </div>
+                      ) : (
+                        <div className="proposal-terminal">
+                          <CheckCircle2 size={18} />
+                          <div><strong>{selectedProposal.status.replaceAll("_", " ")}</strong><p>Decision recorded. Runtime execution remains blocked.</p></div>
+                        </div>
+                      )}
+                    </div>
+                  </aside>
+                </>
+              ) : (
+                <div className="proposal-detail proposal-empty"><Inbox size={22} /><strong>Select a proposal to inspect its evidence.</strong></div>
+              )}
             </div>
           </section>
 

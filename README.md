@@ -12,6 +12,8 @@
 ![Audit Ready](https://img.shields.io/badge/Audit-Ready-0F766E?style=for-the-badge)
 ![License MIT](https://img.shields.io/badge/License-MIT-111827?style=for-the-badge)
 
+[Overview](#what-it-demonstrates) · [Demo](#demo) · [Screenshots](#screenshots) · [Architecture](#architecture) · [API](docs/api-examples.md) · [Release Notes](CHANGELOG.md) · [Security](docs/threat-model.md) · [Roadmap](docs/enterprise-deployment-roadmap.md)
+
 Backend platform for safe AI assistants in banking, medical, legal, and enterprise environments.
 
 This is not a chatbot with PDF.
@@ -28,9 +30,11 @@ The goal is to demonstrate the engineering layer around AI agents: RAG, governan
 - Controlled Obsidian Vault Connector with allowlisted Markdown scanning, persisted Preview Diff, drift-safe apply, `Open in Obsidian` deep links, and a knowledge governance graph.
 - Secure Context Vault with encrypted supplemental context, short-lived step-up access, scope and TTL controls, single-run consumption, secret/injection scans, and metadata-only audit evidence.
 - Prompt-injection lab with runnable attack scenarios and expected policy outcomes.
+- Agent Security Twin with deterministic attack-path reconstruction, modeled blast-radius diff, approval-gated sandbox containment, verification replay, and integrity-digested evidence export.
 - Agent tool gateway where the agent has no shell, secrets, or direct database credentials.
 - Policy engine decisions: `allowed`, `denied`, and `approval_required`.
 - Policy Replay & Diff for comparing historical runs and security evals against current or stricter candidate policy behavior before rollout.
+- Governed Change Proposal Inbox that converts policy replay, knowledge contradictions, security-eval gaps, and approval signals into persistent, evidence-backed proposals with explicit ownership, evaluation, approval, rollout, and rollback contracts.
 - Explainable risk scoring with low, medium, and high bands, weighted factors, and an operator review queue.
 - Redacted audit Evidence Pack export in JSON, Markdown, and PDF with policy version, timestamps, citations, approvals, and an integrity digest.
 - Controlled Governance Registry imports from a validated Excel template, with staged diffs, explicit apply, ownership metadata, and no implicit deletions.
@@ -73,6 +77,8 @@ The versioned `/api/v1` surface is separate from the local/demo endpoints used b
 - mandatory `Idempotency-Key` headers for mutations,
 - paginated lifecycle, audit, and outbox resources,
 - paginated knowledge sources, claims, changes, and releases with RBAC-gated replay and approval decisions,
+- governed change-proposal detection and review with operator/approver role separation, idempotent decisions, and a non-executing release handoff,
+- tenant-bound Security Twin simulation, containment approval, replay verification, and evidence APIs with idempotent mutations,
 - authenticated actor attribution and pending integration outbox events.
 
 Enterprise credentials are disabled by default. Inject `ENTERPRISE_API_CREDENTIALS` through a secret manager using the schema documented in [API examples](docs/api-examples.md); do not commit raw keys.
@@ -137,9 +143,11 @@ Use this flow when presenting the project in an interview:
 6. Open `Governance graph` to trace note-to-source-to-claim lineage, then review the five-to-seven-year retention contradiction and historical impact replay.
 7. Unlock `Secure Context Vault`, attach confidential context to one run, and show that the audit records only its metadata and integrity digest.
 8. Go to `Prompt Injection Lab`, run an instruction-override attack, and inspect the denied run with risk factors and audit evidence.
-9. Use `Tool Gateway` to compare an allowed read with a regulated write that becomes `approval_required`.
-10. Show `/api/v1` authentication, tenant context, RBAC, idempotency replay, and the generated integration outbox event.
-11. Go to `Ledger Demo` and compare unsafe read-modify-write with the atomic SQL update:
+9. Open `Security Twin`. Compare the current tool-scope boundary with an overprivileged candidate, inspect the `0 -> 18` modeled blast-radius diff, approve a sandbox containment plan, and replay it until the path is proven broken.
+10. Use `Tool Gateway` to compare an allowed read with a regulated write that becomes `approval_required`.
+11. Open `Change Proposal Inbox`. Detect proposals, inspect the evidence and component diff, then show that `Accept for release` creates a controlled handoff without applying a runtime change.
+12. Show `/api/v1` authentication, tenant context, RBAC, idempotency replay, and the generated integration outbox event.
+13. Go to `Ledger Demo` and compare unsafe read-modify-write with the atomic SQL update:
 
 ```sql
 UPDATE accounts
@@ -200,7 +208,7 @@ See [Enterprise Deployment Roadmap](docs/enterprise-deployment-roadmap.md) for t
 
 ![Regulated AI Agent Platform demo](docs/demo.gif)
 
-The guided HR/portfolio presentation moves from the platform overview through source-bound RAG, adversarial testing, scoped tools, lifecycle controls, and governed knowledge intake without executing state-changing actions automatically.
+The guided HR/portfolio presentation moves from source-bound RAG and adversarial testing through deterministic attack-path analysis, scoped tools, lifecycle controls, governed knowledge intake, and evidence-backed change proposals without granting the agent runtime authority.
 
 ## Screenshots
 
@@ -224,6 +232,14 @@ The guided HR/portfolio presentation moves from the platform overview through so
 
 ![Policy Replay and Diff](docs/screenshots/05-policy-replay.png)
 
+### Governed Change Proposal Inbox
+
+![Governed Change Proposal Inbox](docs/screenshots/06-change-proposal-inbox.png)
+
+### Agent Security Twin
+
+![Agent Security Twin](docs/screenshots/07-agent-security-twin.png)
+
 ## Architecture
 
 ```mermaid
@@ -240,6 +256,8 @@ flowchart LR
   API --> RAG["Secure RAG Pipeline"]
   API --> Tools["Scoped Tool Gateway"]
   API --> Approvals["Human Approval Workflow"]
+  API --> Twin["Agent Security Twin"]
+  API --> Proposals["Governed Change Proposal Inbox"]
   API --> Audit["Audit Trail"]
   API --> Ledger["Ledger Demo"]
   API --> Outbox["Integration Outbox"]
@@ -252,9 +270,21 @@ flowchart LR
   Lifecycles --> DB
   Knowledge --> DB
   Context --> DB
+  Proposals --> DB
+  Twin --> DB
   Knowledge --> RAG
   Outbox --> DB
   Policy --> Evals["Security Evals"]
+  Policy --> Proposals
+  Knowledge --> Proposals
+  Approvals --> Proposals
+  Evals --> Proposals
+  Proposals --> Outbox
+  Policy --> Twin
+  Tools --> Twin
+  Approvals --> Twin
+  Twin --> Audit
+  Twin --> Outbox
 ```
 
 ## Kubernetes
@@ -284,7 +314,10 @@ kubectl -n regulated-ai get pods,svc,hpa
 
 ## Engineering Notes
 
+- Release notes: [CHANGELOG.md](CHANGELOG.md)
 - Architecture decisions: [docs/adr](docs/adr)
+- Governed change proposals: [ADR 0008](docs/adr/0008-governed-change-proposal-inbox.md)
+- Agent Security Twin: [ADR 0009](docs/adr/0009-agent-security-twin.md)
 - Governed LLM Wiki and Secure Context: [docs/knowledge-governance.md](docs/knowledge-governance.md)
 - API examples: [docs/api-examples.md](docs/api-examples.md)
 - Operations checklist: [docs/operations-checklist.md](docs/operations-checklist.md)

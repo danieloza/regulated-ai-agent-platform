@@ -13,6 +13,8 @@ This project models a regulated AI assistant that can answer from business docum
 - Immutable knowledge sources, derived claims, contradiction reviews, and published knowledge releases.
 - Encrypted protected context, access tokens, content digests, purpose, scope, and expiration metadata.
 - Obsidian vault paths, Markdown notes, persisted sync previews, connector file lineage, and knowledge-graph relations.
+- Change-proposal evidence, source fingerprints, operator rationale, release-handoff manifests, and rollback contracts.
+- Security Twin scenarios, calculated attack paths, modeled blast radius, containment decisions, verification replays, and evidence digests.
 
 ## Trust Boundaries
 
@@ -29,6 +31,8 @@ This project models a regulated AI assistant that can answer from business docum
 | Obsidian vault to connector | Allowlisted backend scanner | Local paths, Markdown, frontmatter, wiki links | Root allowlist, path containment, symlink rejection, file and vault limits, required tags |
 | Preview to apply | Persisted preview digest | Vault content changing after review | Thirty-minute expiry, full rescan, digest comparison, immutable source registration |
 | Graph to operator | Persisted provenance | Inferred lexical relationships | Explicit authoritative/inferred semantics and accessible adjacency view |
+| Signal to change proposal | Human-authorized review workflow | Automated synthesis and incomplete evidence | Deterministic source rules, stable fingerprints, provenance, RBAC, substantive rationale, non-executing handoff |
+| Security scenario to containment | Human-authorized sandbox workflow | Candidate control failure and attack-path hypothesis | Deterministic graph, fixed scenario inventory, operator/approver separation, idempotency, replay verification, no runtime credentials |
 
 ## Attacker Goals
 
@@ -47,6 +51,9 @@ This project models a regulated AI assistant that can answer from business docum
 - Escape the configured vault root, follow a symlink, or exhaust resources with a large Markdown tree.
 - Change a note after preview but before apply to bypass operator review.
 - Treat an inferred graph edge as authoritative provenance or delete published knowledge by deleting its source note.
+- Manipulate a source signal to create a misleading change proposal or treat acceptance as permission to deploy.
+- Exploit an overprivileged tool scope, forged approval, missing tenant check, or poisoned retrieval path to reach regulated assets.
+- Treat scenario-modeled blast-radius counts as discovered production exposure or use sandbox containment as production authorization.
 
 ## Mitigations
 
@@ -72,6 +79,13 @@ This project models a regulated AI assistant that can answer from business docum
 - Connector deletion creates a tombstone and retention review; connector apply never directly publishes to RAG.
 - Raw note bodies remain server-side and are omitted from preview responses and integration outbox projections.
 - Governance graph edges distinguish persisted lineage from inferred lexical overlap.
+- Change-proposal detection uses auditable deterministic inputs, stable fingerprints, explicit evidence completeness, and preserves terminal human decisions.
+- Proposal decisions require attributed operators; enterprise acceptance requires an approver and idempotency key.
+- Acceptance emits only a manifest-digested release handoff with `execution_state: not_executed`; it holds no deployment or runtime-mutation authority.
+- Security Twin reachability is calculated from fixed, versioned scenario graphs and server-side control states; model output cannot add graph edges.
+- Containment requires a persisted simulation, operator-prepared plan, separate approver decision, and replay verification.
+- Security Twin containment is sandbox-only and cannot mutate IAM, policies, credentials, connectors, tools, or business systems.
+- Evidence export includes the attack path, control states, modeled blast radius, decision, verification, and SHA-256 integrity digest.
 
 ## Residual Risks
 
@@ -83,6 +97,8 @@ This project models a regulated AI assistant that can answer from business docum
 - Local claim extraction and contradiction detection are deterministic control-plane examples, not validated legal or clinical reasoning.
 - The local Secure Context credential and application-managed encryption key are not substitutes for corporate MFA, KMS/HSM-backed keys, rotation, or privileged-access monitoring.
 - The local connector scans a filesystem synchronously. Production requires a controlled content replica, inherited source ACLs, durable jobs, malware/DLP controls, and operational ownership.
+- Proposal confidence and expected risk reduction are decision-support estimates. A production release controller must independently validate source evidence, approvals, manifest integrity, canary gates, and rollback.
+- Security Twin inventory is scenario-modeled rather than discovered from live IAM and data catalogs. Production reachability requires authoritative identity, entitlement, connector, asset, and network integrations.
 
 ## Security Regression Scope
 
@@ -98,3 +114,5 @@ The pytest suite and `backend/evals/security_cases.json` are intentionally part 
 - unsafe vs atomic ledger behavior.
 - quarantined knowledge sources, contradiction detection, replay-gated publication, and release integrity;
 - protected-context authentication, encryption boundary, secret rejection, single-use scope, and metadata-only audit evidence.
+- idempotent proposal detection, preserved terminal decisions, role-gated enterprise review, substantive rationale, and non-executing release handoffs.
+- deterministic attack-path blocking, scope-escalation blast-radius detection, cross-tenant isolation, approval-gated containment, replay proof, stable evidence digests, and enterprise RBAC/idempotency.
