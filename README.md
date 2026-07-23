@@ -120,6 +120,12 @@ curl -s -X POST http://127.0.0.1:8000/api/v1/control-lifecycles/transitions \
 
 MIT. See [LICENSE](LICENSE).
 
+## Project Governance
+
+- Contribution guide: [CONTRIBUTING.md](CONTRIBUTING.md)
+- Security policy and private reporting: [SECURITY.md](SECURITY.md)
+- Community standards: [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
+
 ## Run Locally
 
 Terminal 1 - backend:

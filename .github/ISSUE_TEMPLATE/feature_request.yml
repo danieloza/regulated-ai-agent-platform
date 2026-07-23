@@ -1,0 +1,48 @@
+name: Feature request
+description: Propose a focused capability or engineering improvement.
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: Describe the concrete operator, governance, security, or engineering problem.
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+      description: Explain the observable result without prescribing unnecessary implementation detail.
+    validations:
+      required: true
+  - type: textarea
+    id: controls
+    attributes:
+      label: Control impact
+      description: Identify effects on policy, identity, tenant isolation, approval, audit, data, tools, or operations.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Acceptance evidence
+      description: What tests, metrics, replay results, screenshots, or audit evidence should prove completion?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives and tradeoffs
+      description: Describe simpler alternatives and relevant scope or risk tradeoffs.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Submission checks
+      options:
+        - label: I searched existing issues and roadmap material for this capability.
+          required: true
+        - label: This proposal does not require publishing secrets or personal data.
+          required: true
