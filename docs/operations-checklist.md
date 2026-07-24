@@ -45,6 +45,8 @@ Use this checklist when moving from a local evaluation to a shared or deployed e
 
 - [ ] Keep real secrets out of Git, images, frontend bundles, prompts, logs, and audit metadata.
 - [ ] Inject database and Redis credentials from the environment's secret manager.
+- [ ] Inject a minimum 32-character `RELEASE_ATTESTATION_KEY` from a secret manager; never expose it through the frontend, logs, CI artifacts, or API responses.
+- [ ] Set a stable `RELEASE_ATTESTATION_KEY_ID`, document key rotation, and retain verifier access to prior keys for historical attestations.
 - [ ] Use ConfigMaps or equivalent only for non-sensitive configuration.
 - [ ] Set `LOG_LEVEL`, `ALLOWED_ORIGINS`, `ALLOWED_HOSTS`, `DATABASE_URL`, and `REDIS_URL` explicitly per environment.
 - [ ] Verify production rejects wildcard or missing `ALLOWED_HOSTS` values and that `/docs`, `/redoc`, and `/openapi.json` are disabled.
@@ -208,6 +210,9 @@ Use this checklist when moving from a local evaluation to a shared or deployed e
 - [ ] Validate health, assistant query, tool gateway, approval, run details, ledger, and infrastructure status in the target environment.
 - [ ] Validate proposal detection, filtering, evidence inspection, RBAC, idempotent decisions, outbox delivery, and non-executing release handoff behavior.
 - [ ] Validate Security Twin simulation, blast-radius diff, containment approval, verification replay, evidence export, RBAC, idempotency, and outbox delivery.
+- [ ] Run adversarial release certification for the immutable candidate version and preserve all blocking and advisory control evidence.
+- [ ] Require a different identity to record the release decision; do not accept a GO while any mandatory control is failed.
+- [ ] Verify the exported attestation digest in the external pipeline and record the actual deployment and canary result separately.
 - [ ] Validate OIDC login, tenant/role mapping, MFA step-up, maker-checker approval, durable delivery, retry/dead-letter behavior, and downstream reconciliation.
 - [ ] Define owners and alerts for API errors, latency, Redis degradation, database health, approval backlog, and rate-limit spikes.
 - [ ] Review the threat model and production limitations for the intended data classification and exposure.

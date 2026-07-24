@@ -901,6 +901,93 @@ In sandbox mode the response is verified without an external write. With `CASE_M
 }
 ```
 
+## Adversarial Release Assurance
+
+Run the safe candidate through the local operator surface:
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/api/release-assurance/runs \
+  -H "Content-Type: application/json" \
+  -d '{"bundle_id":"guardrail-v2","initiated_by":"release.operator"}'
+```
+
+```json
+{
+  "run": {
+    "id": "assure_70c8c46cd610",
+    "candidate_version": "2026.07.24-guardrail-v2",
+    "status": "awaiting_approval",
+    "gate_decision": "approval_required",
+    "readiness_score": 96,
+    "blockers": [],
+    "runtime_change_applied": false
+  }
+}
+```
+
+The deliberately unsafe candidate removes approval from a regulated write and returns `no_go` with blocking controls and a modeled blast radius:
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/api/release-assurance/runs \
+  -H "Content-Type: application/json" \
+  -d '{"bundle_id":"operations-fast-path","initiated_by":"release.operator"}'
+```
+
+```json
+{
+  "run": {
+    "status": "blocked",
+    "gate_decision": "no_go",
+    "readiness_score": 12,
+    "blast_radius": {"reachable_records": 1042},
+    "blockers": [
+      {"id": "POL-REPLAY-01", "status": "failed"},
+      {"id": "HITL-04", "status": "failed"}
+    ],
+    "runtime_change_applied": false
+  }
+}
+```
+
+An independent approver records the safe candidate decision. The initiator cannot approve the same run, and a run with blocking failures cannot be approved.
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/api/release-assurance/runs/$ASSURANCE_RUN_ID/decision \
+  -H "Content-Type: application/json" \
+  -d '{
+    "action":"approve",
+    "operator_id":"risk.approver",
+    "comment":"Independent review confirms the control evidence, blast radius, and rollback contract."
+  }'
+```
+
+Export the integrity attestation:
+
+```bash
+curl -s http://127.0.0.1:8000/api/release-assurance/runs/$ASSURANCE_RUN_ID/attestation \
+  -o release-attestation.json
+```
+
+The protected enterprise workflow derives actor identity from the authenticated principal and requires idempotency for mutations:
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/api/v1/release-assurance/runs \
+  -H "Authorization: Bearer $ENTERPRISE_OPERATOR_KEY" \
+  -H "X-Tenant-ID: demo" \
+  -H "Idempotency-Key: guardrail-v2-certification-001" \
+  -H "Content-Type: application/json" \
+  -d '{"bundle_id":"guardrail-v2"}'
+
+curl -s -X POST http://127.0.0.1:8000/api/v1/release-assurance/runs/$ASSURANCE_RUN_ID/decisions \
+  -H "Authorization: Bearer $ENTERPRISE_APPROVER_KEY" \
+  -H "X-Tenant-ID: demo" \
+  -H "Idempotency-Key: guardrail-v2-decision-001" \
+  -H "Content-Type: application/json" \
+  -d '{"action":"approve","comment":"Independent reviewer verified all mandatory release evidence."}'
+```
+
+A minimum 32-character `RELEASE_ATTESTATION_KEY` and a non-empty `RELEASE_ATTESTATION_KEY_ID` are required to sign a production GO decision. The key is read only by the backend and never returned. Local development falls back to a process-ephemeral key and therefore does not provide durable cross-process verification.
+
 ## Operational Probes and Metrics
 
 Kubernetes uses separate liveness and dependency-aware readiness routes:
@@ -916,8 +1003,8 @@ curl -s http://127.0.0.1:8000/api/health/ready
   "checks": {
     "database": true,
     "schema_revision": {
-      "current": "48f2772be5c4",
-      "required": "48f2772be5c4",
+      "current": "c9e7a4d51b20",
+      "required": "c9e7a4d51b20",
       "matched": true
     },
     "redis": {"mode": "redis", "connected": true, "url": "redis://redis:6379/0"}

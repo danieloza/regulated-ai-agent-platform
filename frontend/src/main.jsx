@@ -30,6 +30,7 @@ import {
   MessageSquareText,
   Network,
   OctagonX,
+  PackageCheck,
   Play,
   Plus,
   Presentation,
@@ -105,6 +106,7 @@ const sections = [
   ["Security Twin", "security-twin", Network],
   ["Risk Intelligence", "risk-intelligence", Gauge],
   ["Change Proposal Inbox", "change-proposal-inbox", Inbox],
+  ["Release Assurance", "release-assurance", PackageCheck],
   ["Policy Replay", "policy-replay", GitCompareArrows],
   ["Audit Trail", "audit-trail", Fingerprint],
   ["Human Approval", "human-approval", UserCheck],
@@ -165,6 +167,14 @@ const presentationStories = {
         title: "Turn evidence into a controlled proposal",
         body: "Auditable signals become review-ready hypotheses with provenance, blast radius, evaluation steps, accountable approvals and rollback.",
         cue: "Open one high-priority proposal. Stress that synthesis can recommend a change, while only an authorized human can create a release handoff.",
+      },
+      {
+        target: "#release-assurance .release-assurance-hero",
+        section: "release-assurance",
+        eyebrow: "RELEASE ASSURANCE · CERTIFY",
+        title: "Prove the candidate before rollout",
+        body: "One governed gate combines policy replay, adversarial evals, attack-path analysis, approval integrity and rollback evidence.",
+        cue: "Run Guardrail v2, contrast its clean gate with the blocked fast-path candidate, then approve it as an independent reviewer and export the attestation.",
       },
       {
         target: "#policy-replay .panel-heading",
@@ -305,6 +315,14 @@ const presentationStories = {
         title: "Inspect governed proposal synthesis",
         body: "Deterministic rules turn policy, knowledge, evaluation and approval signals into persistent proposals without granting the agent change authority.",
         cue: "Walk from source evidence through the component diff and rollback contract. Accept for release is a state transition, never a deployment.",
+      },
+      {
+        target: "#release-assurance .release-assurance-hero",
+        section: "release-assurance",
+        eyebrow: "RELEASE ASSURANCE · GO / NO-GO",
+        title: "Join controls into one release decision",
+        body: "The release run persists per-control evidence, calculated readiness, modeled blast radius and a maker-checker decision bound to the exact candidate.",
+        cue: "Call out the contract: blocked controls cannot be approved, initiators cannot self-approve, and the HMAC attestation authorizes only an external pipeline.",
       },
       {
         target: "#policy-replay .panel-heading",
@@ -451,6 +469,11 @@ function App() {
   const [proposalBusy, setProposalBusy] = useState("");
   const [proposalOwner, setProposalOwner] = useState("AI Governance");
   const [proposalComment, setProposalComment] = useState("Reviewed the evidence, blast radius, approvals, and rollback plan.");
+  const [releaseAssurance, setReleaseAssurance] = useState(null);
+  const [selectedReleaseRunId, setSelectedReleaseRunId] = useState("");
+  const [releaseBundleId, setReleaseBundleId] = useState("guardrail-v2");
+  const [releaseDecisionComment, setReleaseDecisionComment] = useState("Independent review confirms the control evidence, blast radius, rollback contract, and residual risk.");
+  const [releaseAssuranceBusy, setReleaseAssuranceBusy] = useState("");
   const [trust, setTrust] = useState(null);
   const [trustBusy, setTrustBusy] = useState("");
   const [trustFlowApprovalId, setTrustFlowApprovalId] = useState("");
@@ -569,6 +592,22 @@ function App() {
       setSelectedProposalId((current) => (
         payload.proposals.some((item) => item.id === current) ? current : payload.proposals[0]?.id ?? ""
       ));
+    } catch (error) {
+      setErrorMessage(error.message);
+    }
+  }
+
+  async function loadReleaseAssurance(runId = "") {
+    try {
+      const suffix = runId ? `?run_id=${encodeURIComponent(runId)}` : "";
+      const response = await fetch(`${API}/api/release-assurance${suffix}`);
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload?.error?.message ?? payload?.detail ?? `Release assurance request failed: ${response.status}`);
+      setReleaseAssurance(payload);
+      if (payload.selected) {
+        setSelectedReleaseRunId(payload.selected.id);
+        setReleaseBundleId(payload.selected.bundle_id);
+      }
     } catch (error) {
       setErrorMessage(error.message);
     }
@@ -1238,6 +1277,7 @@ function App() {
     loadAttacks();
     loadGovernance();
     loadChangeProposals();
+    loadReleaseAssurance();
     loadTrust();
     loadSecurityTwin();
     loadLifecycle();
@@ -1433,6 +1473,86 @@ function App() {
     }
   }
 
+  async function runReleaseAssurance(bundleId = releaseBundleId) {
+    setReleaseAssuranceBusy("run");
+    setErrorMessage("");
+    try {
+      const response = await fetch(`${API}/api/release-assurance/runs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bundle_id: bundleId, initiated_by: "release.operator" }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload?.error?.message ?? payload?.detail ?? `Release assurance run failed: ${response.status}`);
+      setReleaseAssurance(payload.overview);
+      setSelectedReleaseRunId(payload.run.id);
+      setReleaseBundleId(payload.run.bundle_id);
+      setStatusMessage(
+        payload.run.gate_decision === "no_go"
+          ? `NO-GO: ${payload.run.blockers.length} blocking control regressions detected; no runtime change applied.`
+          : `Assurance complete at ${payload.run.readiness_score}% readiness. Independent approval is required.`,
+      );
+    } catch (error) {
+      setErrorMessage(error.message);
+    } finally {
+      setReleaseAssuranceBusy("");
+    }
+  }
+
+  async function decideReleaseAssurance(action) {
+    if (!selectedReleaseRunId) return;
+    setReleaseAssuranceBusy(action);
+    setErrorMessage("");
+    try {
+      const response = await fetch(`${API}/api/release-assurance/runs/${selectedReleaseRunId}/decision`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action,
+          operator_id: "risk.approver",
+          comment: releaseDecisionComment,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload?.error?.message ?? payload?.detail ?? `Release decision failed: ${response.status}`);
+      await loadReleaseAssurance(selectedReleaseRunId);
+      setStatusMessage(
+        action === "approve"
+          ? "GO decision attested. Deployment remains delegated to an external release pipeline."
+          : `Release marked ${payload.run.gate_decision}; no runtime change applied.`,
+      );
+    } catch (error) {
+      setErrorMessage(error.message);
+    } finally {
+      setReleaseAssuranceBusy("");
+    }
+  }
+
+  async function downloadReleaseAttestation() {
+    if (!selectedReleaseRunId) return;
+    setReleaseAssuranceBusy("attestation");
+    setErrorMessage("");
+    try {
+      const response = await fetch(`${API}/api/release-assurance/runs/${selectedReleaseRunId}/attestation`);
+      const errorPayload = response.ok ? null : await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(errorPayload?.error?.message ?? errorPayload?.detail ?? `Attestation export failed: ${response.status}`);
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `release-attestation-${selectedReleaseRunId}.json`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      setStatusMessage("Release attestation exported with its integrity digest.");
+    } catch (error) {
+      setErrorMessage(error.message);
+    } finally {
+      setReleaseAssuranceBusy("");
+    }
+  }
+
   async function decideProposal(action) {
     if (!selectedProposal?.id) return;
     setProposalBusy(action);
@@ -1578,6 +1698,13 @@ function App() {
   const selectedProposal = useMemo(
     () => filteredProposals.find((item) => item.id === selectedProposalId) ?? filteredProposals[0] ?? null,
     [filteredProposals, selectedProposalId],
+  );
+  const selectedReleaseRun = useMemo(
+    () => (releaseAssurance?.runs ?? []).find((item) => item.id === selectedReleaseRunId)
+      ?? releaseAssurance?.selected
+      ?? releaseAssurance?.runs?.[0]
+      ?? null,
+    [releaseAssurance, selectedReleaseRunId],
   );
   const currentTrustApproval = useMemo(
     () => (trust?.approvals ?? []).find((item) => item.id === trustFlowApprovalId)
@@ -3011,6 +3138,189 @@ function App() {
             </div>
           </section>
 
+          <section className="panel release-assurance-panel" id="release-assurance">
+            <div className="release-assurance-hero">
+              <div>
+                <span className="release-assurance-kicker"><PackageCheck size={15} /> ADVERSARIAL RELEASE CERTIFICATION</span>
+                <h2>Release Assurance War Room</h2>
+                <p>Attack the candidate before rollout, calculate its control blast radius, and issue a defensible GO / NO-GO decision.</p>
+              </div>
+              <div className="release-assurance-actions">
+                <label htmlFor="release-bundle-select">Candidate bundle</label>
+                <div>
+                  <select
+                    id="release-bundle-select"
+                    value={releaseBundleId}
+                    onChange={(event) => setReleaseBundleId(event.target.value)}
+                    disabled={Boolean(releaseAssuranceBusy)}
+                  >
+                    {(releaseAssurance?.bundles ?? []).map((bundle) => (
+                      <option value={bundle.id} key={bundle.id}>{bundle.title}</option>
+                    ))}
+                  </select>
+                  <button type="button" disabled={Boolean(releaseAssuranceBusy)} onClick={() => runReleaseAssurance()}>
+                    <Play size={16} />
+                    {releaseAssuranceBusy === "run" ? "Certifying..." : "Run certification"}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="release-boundary" role="note">
+              <ShieldCheck size={18} />
+              <div>
+                <strong>Evidence before authority</strong>
+                <p>{releaseAssurance?.operating_mode?.statement ?? "The center evaluates and attests a candidate bundle without mutating runtime state."}</p>
+              </div>
+              <span>DEPLOYMENT: EXTERNAL</span>
+            </div>
+
+            {selectedReleaseRun ? (
+              <>
+                <div className="release-command-strip">
+                  <div className={`release-readiness ${selectedReleaseRun.gate_decision}`} style={{ "--readiness": `${selectedReleaseRun.readiness_score * 3.6}deg` }}>
+                    <div><strong>{selectedReleaseRun.readiness_score}</strong><span>/ 100</span><small>readiness</small></div>
+                  </div>
+                  <div className="release-candidate-summary">
+                    <span>ACTIVE CERTIFICATION</span>
+                    <h3>{selectedReleaseRun.title}</h3>
+                    <p><code>{selectedReleaseRun.baseline_version}</code><ArrowRight size={14} /><code>{selectedReleaseRun.candidate_version}</code></p>
+                    <div>
+                      <span><Fingerprint size={13} />{selectedReleaseRun.id}</span>
+                      <span><Clock3 size={13} />{new Date(selectedReleaseRun.created_at).toLocaleString()}</span>
+                    </div>
+                  </div>
+                  <div className={`release-gate ${selectedReleaseRun.gate_decision}`}>
+                    {selectedReleaseRun.gate_decision === "no_go" ? <OctagonX size={25} /> : <ShieldCheck size={25} />}
+                    <span>RELEASE GATE</span>
+                    <strong>{selectedReleaseRun.gate_decision.replaceAll("_", " ").toUpperCase()}</strong>
+                    <small>{selectedReleaseRun.blockers.length ? `${selectedReleaseRun.blockers.length} blocking findings` : "mandatory controls passed"}</small>
+                  </div>
+                </div>
+
+                <div className="release-war-room">
+                  <div className="release-control-column">
+                    <div className="release-column-heading">
+                      <div><Radar size={16} /><strong>Certification matrix</strong></div>
+                      <span>{selectedReleaseRun.checks.length} controls</span>
+                    </div>
+                    <div className="release-checks">
+                      {selectedReleaseRun.checks.map((check) => (
+                        <article className={`release-check ${check.status}`} key={check.id}>
+                          <div className="release-check-icon">
+                            {check.status === "passed" ? <CheckCircle2 size={17} /> : check.status === "failed" ? <OctagonX size={17} /> : <AlertTriangle size={17} />}
+                          </div>
+                          <div>
+                            <span>{check.id} · {check.domain}</span>
+                            <strong>{check.summary}</strong>
+                            <code>{check.evidence_ref}</code>
+                          </div>
+                          <i>{check.status}</i>
+                        </article>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="release-blast-column">
+                    <div className="release-column-heading">
+                      <div><Network size={16} /><strong>Modeled blast radius</strong></div>
+                      <span>{selectedReleaseRun.blast_radius.reachable_records.toLocaleString()} records reachable</span>
+                    </div>
+                    <p className="release-blast-summary">{selectedReleaseRun.blast_radius.summary}</p>
+                    <div className="release-path" aria-label="Release candidate dependency path">
+                      {selectedReleaseRun.blast_radius.nodes.map((node, index) => (
+                        <React.Fragment key={node.id}>
+                          <div className={`release-path-node ${node.type} ${node.state}`}>
+                            <span>{node.type}</span>
+                            <strong>{node.label}</strong>
+                            <small>{node.state}</small>
+                          </div>
+                          {index < selectedReleaseRun.blast_radius.nodes.length - 1 && <ArrowRight className="release-path-arrow" size={16} />}
+                        </React.Fragment>
+                      ))}
+                    </div>
+                    <div className="release-blast-metrics">
+                      <div><span>Affected runs</span><strong>{selectedReleaseRun.blast_radius.affected_runs}</strong></div>
+                      <div><span>Controls touched</span><strong>{selectedReleaseRun.blast_radius.affected_controls}</strong></div>
+                      <div><span>Regulated workflows</span><strong>{selectedReleaseRun.blast_radius.regulated_workflows}</strong></div>
+                      <div className={selectedReleaseRun.blast_radius.reachable_records ? "danger" : "safe"}><span>Reachable records</span><strong>{selectedReleaseRun.blast_radius.reachable_records.toLocaleString()}</strong></div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="release-lower-grid">
+                  <div className="release-diff-card">
+                    <div className="release-column-heading">
+                      <div><GitCompareArrows size={16} /><strong>Control diff</strong></div>
+                      <span>baseline → candidate</span>
+                    </div>
+                    <div className="release-diff-table-wrap">
+                      <table className="release-diff-table">
+                        <thead><tr><th>Component</th><th>Current</th><th>Candidate</th><th>Impact</th><th>Risk</th></tr></thead>
+                        <tbody>
+                          {selectedReleaseRun.control_diff.map((item) => (
+                            <tr key={item.component}>
+                              <td><strong>{item.component}</strong></td>
+                              <td>{item.current}</td>
+                              <td>{item.candidate}</td>
+                              <td><span className={`release-impact ${item.impact}`}>{item.impact}</span></td>
+                              <td><span className={`risk-badge ${item.risk}`}>{item.risk}</span></td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  <aside className="release-decision-card">
+                    <div className="release-column-heading">
+                      <div><Gavel size={16} /><strong>Independent decision</strong></div>
+                      <span>maker-checker</span>
+                    </div>
+                    <div className="release-decision-identities">
+                      <div><span>Initiated by</span><strong>release.operator</strong></div>
+                      <ArrowRight size={15} />
+                      <div><span>Decided by</span><strong>{selectedReleaseRun.decision?.operator_id ?? "risk.approver"}</strong></div>
+                    </div>
+                    {selectedReleaseRun.blockers.length > 0 && (
+                      <div className="release-blocker-callout">
+                        <OctagonX size={18} />
+                        <div><strong>Approval path unavailable</strong><p>The API rejects approval until blocking controls are remediated and re-certified in a new run.</p></div>
+                      </div>
+                    )}
+                    <label htmlFor="release-decision-comment">
+                      <span>Decision rationale</span>
+                      <textarea
+                        id="release-decision-comment"
+                        rows="4"
+                        value={releaseDecisionComment}
+                        onChange={(event) => setReleaseDecisionComment(event.target.value)}
+                        disabled={selectedReleaseRun.status !== "awaiting_approval"}
+                      />
+                    </label>
+                    {selectedReleaseRun.status === "awaiting_approval" ? (
+                      <div className="release-decision-actions">
+                        <button type="button" disabled={Boolean(releaseAssuranceBusy)} onClick={() => decideReleaseAssurance("request_changes")}><RefreshCw size={15} />Request changes</button>
+                        <button type="button" disabled={Boolean(releaseAssuranceBusy)} onClick={() => decideReleaseAssurance("deny")}><OctagonX size={15} />NO-GO</button>
+                        <button className="release-approve" type="button" disabled={Boolean(releaseAssuranceBusy) || selectedReleaseRun.blockers.length > 0} onClick={() => decideReleaseAssurance("approve")}><ShieldCheck size={15} />Approve &amp; attest</button>
+                      </div>
+                    ) : (
+                      <div className={`release-terminal ${selectedReleaseRun.gate_decision}`}>
+                        {selectedReleaseRun.gate_decision === "go" ? <CheckCircle2 size={18} /> : <OctagonX size={18} />}
+                        <div><strong>{selectedReleaseRun.gate_decision.replaceAll("_", " ").toUpperCase()}</strong><p>Decision persisted; no deployment was performed.</p></div>
+                      </div>
+                    )}
+                    <button className="release-attestation" type="button" disabled={!selectedReleaseRun.attestation_available || Boolean(releaseAssuranceBusy)} onClick={downloadReleaseAttestation}>
+                      <Download size={15} />Export integrity attestation
+                    </button>
+                  </aside>
+                </div>
+              </>
+            ) : (
+              <div className="release-empty"><PackageCheck size={22} /><div><strong>No certification run selected</strong><p>Choose a candidate bundle and run its adversarial release gate.</p></div></div>
+            )}
+          </section>
+
           <section className="panel replay-panel" id="policy-replay">
             <div className="panel-heading replay-heading">
               <div>
@@ -3528,4 +3838,8 @@ function RunDrawer({ run, onClose }) {
   );
 }
 
-createRoot(document.getElementById("root")).render(<App />);
+const rootNode = document.getElementById("root");
+const appRoot = import.meta.hot
+  ? (globalThis.__regulatedAiAppRoot ??= createRoot(rootNode))
+  : createRoot(rootNode);
+appRoot.render(<App />);
