@@ -15,6 +15,7 @@ This repository is designed as a production-shaped portfolio project, not a drop
 - The Obsidian connector scans an allowlisted local Markdown vault synchronously; the bundled vault is demonstration data.
 - Change proposals are synthesized from deterministic project signals; confidence and expected-risk-reduction values are illustrative decision-support metadata.
 - Security Twin attack paths and blast-radius counts come from deterministic scenario inventory; they do not discover live IAM, network, or data-catalog exposure.
+- Release Assurance uses configured control checks and modeled dependencies. Its GO / NO-GO result is evidence for a release process, not proof that an unmodeled production dependency is safe.
 - Kubernetes manifests show deployment patterns, probes, limits, ConfigMap/Secret split, and non-root containers, but they are not a complete platform baseline.
 - The case-management adapter is deterministic and local until a fixed enterprise endpoint and signing secret are configured.
 - Prometheus metrics and structured correlation logs are available, but no organization-specific dashboards, paging rules, or validated SLO history are bundled.
@@ -40,6 +41,7 @@ This repository is designed as a production-shaped portfolio project, not a drop
 - Integrate accepted proposals with a corporate workflow and release controller that independently verifies manifest integrity, separation of duties, approvals, canary gates, observability, and rollback.
 - Calibrate proposal ranking and risk-reduction estimates against representative operating data before using them for prioritization.
 - Integrate Security Twin inventory with authoritative IAM entitlements, asset ownership, tenant metadata, connector scopes, data classification, and network-policy sources before using it for production exposure decisions.
+- Connect Release Assurance to the authoritative policy registry, service catalog, CI security-eval results, IAM entitlement graph, artifact digests, deployment environment, and change-management system. Verify its attestation in the external release pipeline and preserve deployment/canary evidence separately.
 - Keep production containment in a separate, human-authorized SOAR or release workflow with narrow service identities, fixed destinations, independent validation, rollback, and post-change verification.
 - Run integration delivery through a managed queue/worker, connect the fixed adapter to an approved case-management sandbox, and establish downstream idempotency, reconciliation, retry, dead-letter, and incident ownership.
 - Keep local `/api/trust/*` actor-supplied routes outside production ingress; production authorization must use `/api/v1/trust/*`.

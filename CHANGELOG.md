@@ -4,7 +4,31 @@ This file records material platform changes for operators, reviewers, and integr
 
 ## Unreleased
 
-No unreleased material changes.
+### Added
+
+- Adversarial Release Assurance War Room with persisted certification runs, a server-calculated control matrix, baseline-to-candidate diff, modeled blast radius, hard blocking findings, maker-checker GO / NO-GO decisions, and HMAC-SHA256 integrity attestations.
+- Protected `/api/v1/release-assurance` resources with tenant enforcement, RBAC, idempotent certification and decision mutations, actor attribution, and outbox evidence.
+- Safe and intentionally unsafe candidate bundles for demonstrating that approval removal produces a non-overridable `NO-GO` with modeled customer-record exposure.
+- Guided client and engineering presentation steps, API examples, ADR 0012, operator screenshots, and updated demo media for adversarial release certification.
+
+### Security
+
+- Production attestation fails closed when `RELEASE_ATTESTATION_KEY` is absent; signing key material is never returned to the client.
+- Blocking control failures cannot be approved, and the initiating operator cannot approve the same certification run.
+- An attestation explicitly authorizes only an external pipeline and never performs a deployment or runtime mutation.
+- The frontend lockfile resolves PostCSS to `8.5.23`, removing the high-severity source-map path traversal advisory reported against versions through `8.5.17`.
+
+### Operational impact
+
+- Production databases require migration `c9e7a4d51b20`.
+- Deployments issuing attestations must inject and rotate `RELEASE_ATTESTATION_KEY` and publish a stable `RELEASE_ATTESTATION_KEY_ID`.
+
+### Validation
+
+- Backend test suite: 63 tests passed, including local, enterprise, integrity, and fail-closed release-assurance contracts.
+- Frontend production build, zero-high-severity npm audit, and Docker Compose configuration validation completed successfully.
+- Alembic upgraded a fresh database to `c9e7a4d51b20 (head)` with no model/schema drift.
+- Browser validation covered safe GO, blocked NO-GO, maker-checker, attestation availability, and responsive layouts at 1440, 768, and 375 CSS pixels.
 
 ## [0.1.0] - 2026-07-24
 

@@ -62,9 +62,10 @@ GOVERNANCE_TEMPLATE_PATH = ROOT / "assets" / "governance-registry-template.xlsx"
 DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{DB_PATH}")
 POLICY_VERSION = os.getenv("POLICY_VERSION", "2026.07.10-default")
-ALEMBIC_HEAD_REVISION = "48f2772be5c4"
+ALEMBIC_HEAD_REVISION = "c9e7a4d51b20"
 APP_ENV = os.getenv("APP_ENV", "development").casefold()
 IS_PRODUCTION = APP_ENV in {"production", "prod"}
+EPHEMERAL_RELEASE_ATTESTATION_KEY = os.urandom(32)
 ALLOWED_ORIGINS = [origin.strip() for origin in os.getenv("ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",") if origin.strip()]
 ALLOWED_HOSTS = [host.strip() for host in os.getenv("ALLOWED_HOSTS", "*" if not IS_PRODUCTION else "").split(",") if host.strip()]
 if IS_PRODUCTION and (not ALLOWED_ORIGINS or "*" in ALLOWED_ORIGINS):
@@ -556,6 +557,28 @@ class SecurityTwinSimulation(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC), index=True)
 
 
+class ReleaseAssuranceRun(Base):
+    __tablename__ = "release_assurance_runs"
+
+    id: Mapped[str] = mapped_column(String(48), primary_key=True)
+    bundle_id: Mapped[str] = mapped_column(String(80), index=True)
+    title: Mapped[str] = mapped_column(String(240))
+    baseline_version: Mapped[str] = mapped_column(String(80))
+    candidate_version: Mapped[str] = mapped_column(String(80), index=True)
+    status: Mapped[str] = mapped_column(String(40), default="awaiting_approval", index=True)
+    gate_decision: Mapped[str] = mapped_column(String(40), index=True)
+    readiness_score: Mapped[int] = mapped_column(Integer)
+    initiated_by: Mapped[str] = mapped_column(String(120), index=True)
+    checks_json: Mapped[list] = mapped_column(JSON, default=list)
+    diff_json: Mapped[list] = mapped_column(JSON, default=list)
+    blast_radius_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    evidence_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    decision_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    attestation_digest: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC), index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC), index=True)
+
+
 class QueryRequest(BaseModel):
     question: str = Field(min_length=3, max_length=1200)
     user_id: str = "operator.demo"
@@ -633,6 +656,34 @@ class SecurityTwinActionRequest(BaseModel):
 class SecurityTwinContainmentDecisionRequest(BaseModel):
     action: Literal["approve", "deny"]
     operator_id: str = Field(default="security.approver", min_length=3, max_length=120)
+    comment: str = Field(min_length=10, max_length=1000)
+
+
+class ReleaseAssuranceRunRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    bundle_id: Literal["guardrail-v2", "operations-fast-path"] = "guardrail-v2"
+    initiated_by: str = Field(default="release.operator", min_length=3, max_length=120)
+
+
+class ReleaseAssuranceDecisionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    action: Literal["approve", "deny", "request_changes"]
+    operator_id: str = Field(default="risk.approver", min_length=3, max_length=120)
+    comment: str = Field(min_length=10, max_length=1000)
+
+
+class EnterpriseReleaseAssuranceRunRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    bundle_id: Literal["guardrail-v2", "operations-fast-path"] = "guardrail-v2"
+
+
+class EnterpriseReleaseAssuranceDecisionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    action: Literal["approve", "deny", "request_changes"]
     comment: str = Field(min_length=10, max_length=1000)
 
 
@@ -1628,6 +1679,15 @@ def seed() -> None:
         session.commit()
         sync_change_proposals(session)
         ensure_security_twin_seed()
+        if not session.get(ReleaseAssuranceRun, "assure_guardrail_demo"):
+            session.add(
+                create_release_assurance_run(
+                    "guardrail-v2",
+                    "release.operator",
+                    fixed_id="assure_guardrail_demo",
+                )
+            )
+            session.commit()
         if session.scalar(select(Document.id).limit(1)):
             return
         docs = [
@@ -2594,6 +2654,429 @@ def security_twin_evidence_pack(simulation_id: str) -> dict:
                 "Sandbox containment does not mutate IAM, policies, credentials, connectors, or business systems.",
             ],
         }
+
+
+RELEASE_ASSURANCE_BUNDLES = {
+    "guardrail-v2": {
+        "id": "guardrail-v2",
+        "title": "Guardrail v2 · retrieval and tool authorization",
+        "baseline_version": POLICY_VERSION,
+        "candidate_version": "2026.07.24-guardrail-v2",
+        "risk_tier": "high-impact",
+        "description": "Tightens citation enforcement and MCP tool scopes while preserving regulated-write approval.",
+        "rollback": "Restore the prior policy bundle and connector scope manifest, then replay the same evidence corpus.",
+        "owners": ["AI Governance", "AI Security", "Platform Engineering"],
+    },
+    "operations-fast-path": {
+        "id": "operations-fast-path",
+        "title": "Operations fast path · reduced approval friction",
+        "baseline_version": POLICY_VERSION,
+        "candidate_version": "2026.07.24-operations-fast-path",
+        "risk_tier": "critical",
+        "description": "Candidate proposal removes approval from case-note writes to reduce handling time.",
+        "rollback": "Reject the candidate and retain the current approval-required tool policy.",
+        "owners": ["Customer Operations", "AI Governance"],
+    },
+}
+
+
+def release_assurance_controls(bundle_id: str) -> tuple[list[dict], list[dict], dict]:
+    if bundle_id == "guardrail-v2":
+        checks = [
+            {
+                "id": "POL-REPLAY-01",
+                "domain": "Policy regression",
+                "status": "passed",
+                "weight": 22,
+                "summary": "20 recorded decisions replayed; no permission was relaxed.",
+                "evidence_ref": "policy-replay:historical:current",
+                "blocking": True,
+            },
+            {
+                "id": "SEC-EVAL-02",
+                "domain": "Adversarial evaluation",
+                "status": "passed",
+                "weight": 22,
+                "summary": "Prompt injection, secret exfiltration and tool-abuse expectations preserved.",
+                "evidence_ref": "policy-replay:security-evals:current",
+                "blocking": True,
+            },
+            {
+                "id": "TWIN-03",
+                "domain": "Attack-path simulation",
+                "status": "passed",
+                "weight": 18,
+                "summary": "Scoped tool gateway blocks modeled privilege escalation before the business system.",
+                "evidence_ref": "security-twin:tool_scope_escalation:current",
+                "blocking": True,
+            },
+            {
+                "id": "HITL-04",
+                "domain": "Human approval",
+                "status": "passed",
+                "weight": 16,
+                "summary": "Regulated writes remain approval_required with maker-checker separation.",
+                "evidence_ref": "trust-control:HITL-03",
+                "blocking": True,
+            },
+            {
+                "id": "RAG-05",
+                "domain": "Knowledge grounding",
+                "status": "passed",
+                "weight": 14,
+                "summary": "Citation requirement and safe I-don't-know behavior remain enforced.",
+                "evidence_ref": "knowledge-release:current",
+                "blocking": True,
+            },
+            {
+                "id": "OPS-06",
+                "domain": "Operational readiness",
+                "status": "advisory",
+                "weight": 8,
+                "summary": "Rollback contract is complete; production latency benchmark remains external.",
+                "evidence_ref": "release-plan:rollback",
+                "blocking": False,
+            },
+        ]
+        diff = [
+            {"component": "RAG policy", "current": "Citations required for approved-source answers", "candidate": "Citations required plus claim-level provenance checks", "impact": "stricter", "risk": "low"},
+            {"component": "MCP scopes", "current": "Static tool allowlist", "candidate": "Tool + resource + argument scope binding", "impact": "stricter", "risk": "medium"},
+            {"component": "Case-note writes", "current": "approval_required", "candidate": "approval_required", "impact": "unchanged", "risk": "low"},
+            {"component": "Runtime authority", "current": "No shell or direct database credentials", "candidate": "No shell or direct database credentials", "impact": "unchanged", "risk": "low"},
+        ]
+        blast_radius = {
+            "summary": "3 governed components change; 2 downstream workflows require regression evidence.",
+            "nodes": [
+                {"id": "bundle", "label": "Guardrail v2", "type": "candidate", "state": "changed"},
+                {"id": "rag", "label": "Source-bound RAG", "type": "control", "state": "changed"},
+                {"id": "mcp", "label": "MCP Security Gateway", "type": "control", "state": "changed"},
+                {"id": "assistant", "label": "Assistant queries", "type": "workflow", "state": "covered"},
+                {"id": "case", "label": "Case-note writes", "type": "workflow", "state": "unchanged"},
+                {"id": "audit", "label": "Evidence packs", "type": "evidence", "state": "covered"},
+            ],
+            "edges": [["bundle", "rag"], ["bundle", "mcp"], ["rag", "assistant"], ["mcp", "case"], ["assistant", "audit"], ["case", "audit"]],
+            "affected_runs": 20,
+            "affected_controls": 3,
+            "regulated_workflows": 2,
+            "reachable_records": 0,
+        }
+    else:
+        checks = [
+            {
+                "id": "POL-REPLAY-01",
+                "domain": "Policy regression",
+                "status": "failed",
+                "weight": 25,
+                "summary": "7 historical regulated writes change from approval_required to allowed.",
+                "evidence_ref": "policy-replay:historical:relaxed-write",
+                "blocking": True,
+            },
+            {
+                "id": "SEC-EVAL-02",
+                "domain": "Adversarial evaluation",
+                "status": "failed",
+                "weight": 25,
+                "summary": "The regulated-write security case no longer matches its expected decision.",
+                "evidence_ref": "policy-replay:security-evals:relaxed-write",
+                "blocking": True,
+            },
+            {
+                "id": "TWIN-03",
+                "domain": "Attack-path simulation",
+                "status": "failed",
+                "weight": 20,
+                "summary": "Approval bypass creates a modeled path to regulated customer records.",
+                "evidence_ref": "security-twin:approval_bypass",
+                "blocking": True,
+            },
+            {
+                "id": "HITL-04",
+                "domain": "Human approval",
+                "status": "failed",
+                "weight": 18,
+                "summary": "Maker-checker is removed from a high-impact write path.",
+                "evidence_ref": "trust-control:HITL-03",
+                "blocking": True,
+            },
+            {
+                "id": "OPS-06",
+                "domain": "Operational readiness",
+                "status": "passed",
+                "weight": 12,
+                "summary": "Rollback instructions exist but cannot compensate for the authorization regression.",
+                "evidence_ref": "release-plan:rollback",
+                "blocking": False,
+            },
+        ]
+        diff = [
+            {"component": "Case-note writes", "current": "approval_required", "candidate": "allowed", "impact": "relaxed", "risk": "critical"},
+            {"component": "Maker-checker", "current": "Required", "candidate": "Bypassed", "impact": "removed", "risk": "critical"},
+            {"component": "Audit evidence", "current": "Approval identity and comment", "candidate": "Requester identity only", "impact": "weaker", "risk": "high"},
+        ]
+        blast_radius = {
+            "summary": "Approval removal exposes a write path to 1,042 modeled customer records.",
+            "nodes": [
+                {"id": "bundle", "label": "Operations fast path", "type": "candidate", "state": "changed"},
+                {"id": "policy", "label": "Write policy", "type": "control", "state": "failed"},
+                {"id": "approval", "label": "Human approval", "type": "control", "state": "bypassed"},
+                {"id": "tool", "label": "create_case_note", "type": "workflow", "state": "exposed"},
+                {"id": "records", "label": "Customer records", "type": "asset", "state": "reachable"},
+            ],
+            "edges": [["bundle", "policy"], ["policy", "approval"], ["approval", "tool"], ["tool", "records"]],
+            "affected_runs": 7,
+            "affected_controls": 3,
+            "regulated_workflows": 1,
+            "reachable_records": 1042,
+        }
+    return checks, diff, blast_radius
+
+
+def release_readiness(checks: list[dict]) -> int:
+    earned = sum(
+        item["weight"]
+        if item["status"] == "passed"
+        else round(item["weight"] * 0.5)
+        if item["status"] == "advisory"
+        else 0
+        for item in checks
+    )
+    return min(100, earned)
+
+
+def serialize_release_assurance_run(item: ReleaseAssuranceRun) -> dict:
+    blockers = [check for check in item.checks_json if check["blocking"] and check["status"] == "failed"]
+    return {
+        "id": item.id,
+        "bundle_id": item.bundle_id,
+        "title": item.title,
+        "baseline_version": item.baseline_version,
+        "candidate_version": item.candidate_version,
+        "status": item.status,
+        "gate_decision": item.gate_decision,
+        "readiness_score": item.readiness_score,
+        "initiated_by": item.initiated_by,
+        "checks": item.checks_json,
+        "control_diff": item.diff_json,
+        "blast_radius": item.blast_radius_json,
+        "evidence": item.evidence_json,
+        "decision": item.decision_json,
+        "blockers": blockers,
+        "attestation_available": bool(item.attestation_digest),
+        "attestation_digest": item.attestation_digest,
+        "created_at": item.created_at.isoformat(),
+        "updated_at": item.updated_at.isoformat(),
+        "runtime_change_applied": False,
+    }
+
+
+def create_release_assurance_run(bundle_id: str, initiated_by: str, *, fixed_id: str | None = None) -> ReleaseAssuranceRun:
+    bundle = RELEASE_ASSURANCE_BUNDLES[bundle_id]
+    checks, diff, blast_radius = release_assurance_controls(bundle_id)
+    blockers = [item for item in checks if item["blocking"] and item["status"] == "failed"]
+    score = release_readiness(checks)
+    now = datetime.now(UTC)
+    return ReleaseAssuranceRun(
+        id=fixed_id or f"assure_{uuid4().hex[:12]}",
+        bundle_id=bundle_id,
+        title=bundle["title"],
+        baseline_version=bundle["baseline_version"],
+        candidate_version=bundle["candidate_version"],
+        status="blocked" if blockers else "awaiting_approval",
+        gate_decision="no_go" if blockers else "approval_required",
+        readiness_score=score,
+        initiated_by=initiated_by,
+        checks_json=checks,
+        diff_json=diff,
+        blast_radius_json=blast_radius,
+        evidence_json={
+            "schema_version": "release-assurance.v1",
+            "control_checks": len(checks),
+            "blocking_findings": len(blockers),
+            "sources": sorted({item["evidence_ref"].split(":")[0] for item in checks}),
+            "rollback": bundle["rollback"],
+            "required_approvers": bundle["owners"],
+            "generated_at": now.isoformat(),
+        },
+        decision_json={},
+        created_at=now,
+        updated_at=now,
+    )
+
+
+def release_assurance_signing_payload(item: ReleaseAssuranceRun) -> dict:
+    return {
+        "run_id": item.id,
+        "candidate_version": item.candidate_version,
+        "readiness_score": item.readiness_score,
+        "checks": item.checks_json,
+        "control_diff": item.diff_json,
+        "blast_radius": item.blast_radius_json,
+        "evidence": item.evidence_json,
+        "decision": item.decision_json,
+    }
+
+
+def release_assurance_attestation(item: ReleaseAssuranceRun) -> dict:
+    if not item.attestation_digest:
+        raise HTTPException(status_code=409, detail="A positive independent gate decision is required before attestation export.")
+    return {
+        "schema_version": "release-attestation.v1",
+        "attestation_id": f"att_{item.id}",
+        "release_assurance_run_id": item.id,
+        "candidate_version": item.candidate_version,
+        "gate_decision": item.gate_decision,
+        "readiness_score": item.readiness_score,
+        "approved_by": item.decision_json.get("operator_id"),
+        "approved_at": item.decision_json.get("decided_at"),
+        "certification_manifest": release_assurance_signing_payload(item),
+        "control_evidence": [
+            {"id": check["id"], "status": check["status"], "evidence_ref": check["evidence_ref"]}
+            for check in item.checks_json
+        ],
+        "integrity": {
+            "algorithm": "HMAC-SHA256",
+            "key_id": os.getenv("RELEASE_ATTESTATION_KEY_ID", "ephemeral-development-key"),
+            "digest": item.attestation_digest,
+            "covers": "certification_manifest",
+        },
+        "execution": {
+            "release_authorized": True,
+            "deployment_performed": False,
+            "runtime_change_applied": False,
+            "statement": "This attestation authorizes an external release pipeline; it does not deploy the candidate.",
+        },
+    }
+
+
+def release_assurance_overview(selected_id: str | None = None) -> dict:
+    with SessionLocal() as session:
+        items = session.scalars(
+            select(ReleaseAssuranceRun).order_by(ReleaseAssuranceRun.created_at.desc()).limit(20)
+        ).all()
+        selected = next((item for item in items if item.id == selected_id), None) if selected_id else None
+        selected = selected or (items[0] if items else None)
+        return {
+            "generated_at": now_iso(),
+            "operating_mode": {
+                "evaluation": "deterministic_control_gate",
+                "authorization": "independent_human_required",
+                "deployment": "external_pipeline_only",
+                "statement": "The center evaluates and attests a candidate bundle. It never mutates runtime policy, IAM, data, or deployment state.",
+            },
+            "metrics": {
+                "evaluated": len(items),
+                "awaiting_approval": sum(item.status == "awaiting_approval" for item in items),
+                "blocked": sum(item.status == "blocked" for item in items),
+                "attested": sum(bool(item.attestation_digest) for item in items),
+            },
+            "bundles": list(RELEASE_ASSURANCE_BUNDLES.values()),
+            "runs": [serialize_release_assurance_run(item) for item in items],
+            "selected": serialize_release_assurance_run(selected) if selected else None,
+        }
+
+
+def sign_release_assurance(item: ReleaseAssuranceRun) -> str:
+    secret = os.getenv("RELEASE_ATTESTATION_KEY")
+    key_id = os.getenv("RELEASE_ATTESTATION_KEY_ID", "").strip()
+    if IS_PRODUCTION and (not secret or len(secret) < 32 or not key_id):
+        raise HTTPException(status_code=503, detail="Release attestation signing is not configured with the required production controls.")
+    secret_bytes = secret.encode("utf-8") if secret else EPHEMERAL_RELEASE_ATTESTATION_KEY
+    payload = release_assurance_signing_payload(item)
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return hmac.new(secret_bytes, canonical.encode("utf-8"), hashlib.sha256).hexdigest()
+
+
+@app.get("/api/release-assurance", tags=["Release Assurance"])
+def get_release_assurance(run_id: str | None = Query(default=None, max_length=48)) -> dict:
+    return release_assurance_overview(run_id)
+
+
+@app.post("/api/release-assurance/runs", tags=["Release Assurance"])
+def run_release_assurance(request: ReleaseAssuranceRunRequest) -> dict:
+    with SessionLocal() as session:
+        item = create_release_assurance_run(request.bundle_id, request.initiated_by)
+        session.add(item)
+        session.commit()
+        audit(
+            session,
+            item.id,
+            request.initiated_by,
+            "release_assurance_evaluated",
+            item.gate_decision,
+            f"Evaluated release candidate {item.candidate_version} across {len(item.checks_json)} governed controls.",
+            {
+                "bundle_id": item.bundle_id,
+                "readiness_score": item.readiness_score,
+                "blocking_findings": item.evidence_json["blocking_findings"],
+                "runtime_change_applied": False,
+            },
+        )
+        return {"run": serialize_release_assurance_run(item), "overview": release_assurance_overview(item.id)}
+
+
+@app.post("/api/release-assurance/runs/{run_id}/decision", tags=["Release Assurance"])
+def decide_release_assurance(run_id: str, request: ReleaseAssuranceDecisionRequest) -> dict:
+    with SessionLocal() as session:
+        item = session.get(ReleaseAssuranceRun, run_id)
+        if not item:
+            raise HTTPException(status_code=404, detail="Release assurance run not found.")
+        if item.status in {"approved", "denied", "changes_requested"}:
+            raise HTTPException(status_code=409, detail="Release assurance decision is already terminal.")
+        if request.operator_id == item.initiated_by:
+            raise HTTPException(status_code=409, detail="Maker-checker separation requires a different release approver.")
+        blockers = [check for check in item.checks_json if check["blocking"] and check["status"] == "failed"]
+        if request.action == "approve" and blockers:
+            raise HTTPException(status_code=409, detail="A release with blocking control failures cannot be approved.")
+        item.decision_json = {
+            "action": request.action,
+            "operator_id": request.operator_id,
+            "comment": redact_pii(request.comment.strip()),
+            "decided_at": now_iso(),
+        }
+        if request.action == "approve":
+            item.status = "approved"
+            item.gate_decision = "go"
+            item.attestation_digest = sign_release_assurance(item)
+        elif request.action == "deny":
+            item.status = "denied"
+            item.gate_decision = "no_go"
+        else:
+            item.status = "changes_requested"
+            item.gate_decision = "changes_required"
+        item.updated_at = datetime.now(UTC)
+        session.commit()
+        audit(
+            session,
+            item.id,
+            request.operator_id,
+            "release_assurance_decided",
+            item.gate_decision,
+            f"Release candidate {item.candidate_version} gate decision recorded as {item.gate_decision}.",
+            {
+                "action": request.action,
+                "attestation_issued": bool(item.attestation_digest),
+                "deployment_performed": False,
+                "runtime_change_applied": False,
+            },
+        )
+        return {
+            "run": serialize_release_assurance_run(item),
+            "attestation": release_assurance_attestation(item) if item.attestation_digest else None,
+            "runtime_change_applied": False,
+        }
+
+
+@app.get("/api/release-assurance/runs/{run_id}/attestation", tags=["Release Assurance"])
+def export_release_assurance_attestation(run_id: str) -> JSONResponse:
+    with SessionLocal() as session:
+        item = session.get(ReleaseAssuranceRun, run_id)
+        if not item:
+            raise HTTPException(status_code=404, detail="Release assurance run not found.")
+        payload = release_assurance_attestation(item)
+    response = JSONResponse(payload)
+    response.headers["Content-Disposition"] = f'attachment; filename="release-attestation-{run_id}.json"'
+    response.headers["X-Attestation-SHA256"] = payload["integrity"]["digest"]
+    return response
 
 
 @app.get("/api/change-proposals", tags=["Change Governance"])
@@ -3873,8 +4356,8 @@ def enterprise_capabilities(principal: EnterprisePrincipal = Depends(require_rol
             "assurance_level": principal.assurance_level,
             "credential_fingerprint": principal.key_fingerprint,
         },
-        "controls": ["oidc-jwt-validation", "group-role-mapping", "mfa-assurance", "maker-checker", "payload-bound-approval", "rbac", "tenant-boundary", "idempotency", "pagination", "outbox", "durable-delivery", "audit-attribution", "knowledge-release-gates", "connector-path-allowlist", "persisted-sync-preview", "human-authorized-change-proposals", "deterministic-attack-paths", "human-approved-sandbox-containment", "containment-verification"],
-        "resources": ["trust-access-decisions", "trust-approvals", "integration-deliveries", "break-glass-grants", "change-proposals", "security-attack-paths", "security-containments", "control-lifecycles", "data-subject-requests", "knowledge-sources", "knowledge-claims", "knowledge-changes", "knowledge-releases", "knowledge-connectors", "knowledge-graph", "audit-events", "outbox-events"],
+        "controls": ["oidc-jwt-validation", "group-role-mapping", "mfa-assurance", "maker-checker", "payload-bound-approval", "rbac", "tenant-boundary", "idempotency", "pagination", "outbox", "durable-delivery", "audit-attribution", "knowledge-release-gates", "connector-path-allowlist", "persisted-sync-preview", "human-authorized-change-proposals", "deterministic-attack-paths", "human-approved-sandbox-containment", "containment-verification", "adversarial-release-certification", "release-attestation"],
+        "resources": ["trust-access-decisions", "trust-approvals", "integration-deliveries", "break-glass-grants", "change-proposals", "release-assurance-runs", "release-attestations", "security-attack-paths", "security-containments", "control-lifecycles", "data-subject-requests", "knowledge-sources", "knowledge-claims", "knowledge-changes", "knowledge-releases", "knowledge-connectors", "knowledge-graph", "audit-events", "outbox-events"],
     }
 
 
@@ -4112,6 +4595,89 @@ def enterprise_change_proposal_decision(
             "execution_state": result["proposal"]["execution_state"],
         },
     )
+
+
+@app.get("/api/v1/release-assurance", tags=["Enterprise Release Assurance"])
+def enterprise_release_assurance(
+    run_id: str | None = Query(default=None, max_length=48),
+    principal: EnterprisePrincipal = Depends(require_role("viewer")),
+) -> dict:
+    ensure_enterprise_resource_tenant(principal)
+    return {**release_assurance_overview(run_id), "tenant_id": principal.tenant_id}
+
+
+@app.post("/api/v1/release-assurance/runs", tags=["Enterprise Release Assurance"])
+def enterprise_run_release_assurance(
+    request: EnterpriseReleaseAssuranceRunRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    principal: EnterprisePrincipal = Depends(require_role("operator")),
+) -> dict:
+    ensure_enterprise_resource_tenant(principal)
+    body = request.model_dump()
+    return idempotent_enterprise_mutation(
+        principal,
+        "/api/v1/release-assurance/runs",
+        idempotency_key,
+        body,
+        lambda: run_release_assurance(
+            ReleaseAssuranceRunRequest(bundle_id=request.bundle_id, initiated_by=principal.subject)
+        ),
+        request.bundle_id,
+        "enterprise.release-assurance.evaluated",
+        lambda result: {
+            "run_id": result["run"]["id"],
+            "gate_decision": result["run"]["gate_decision"],
+            "readiness_score": result["run"]["readiness_score"],
+            "blocking_findings": len(result["run"]["blockers"]),
+            "runtime_change_applied": False,
+        },
+    )
+
+
+@app.post("/api/v1/release-assurance/runs/{run_id}/decisions", tags=["Enterprise Release Assurance"])
+def enterprise_decide_release_assurance(
+    run_id: str,
+    request: EnterpriseReleaseAssuranceDecisionRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    principal: EnterprisePrincipal = Depends(require_role("approver")),
+) -> dict:
+    ensure_enterprise_resource_tenant(principal)
+    body = request.model_dump()
+    return idempotent_enterprise_mutation(
+        principal,
+        f"/api/v1/release-assurance/runs/{run_id}/decisions",
+        idempotency_key,
+        body,
+        lambda: decide_release_assurance(
+            run_id,
+            ReleaseAssuranceDecisionRequest(
+                action=request.action,
+                operator_id=principal.subject,
+                comment=request.comment,
+            ),
+        ),
+        run_id,
+        "enterprise.release-assurance.decided",
+        lambda result: {
+            "run_id": result["run"]["id"],
+            "gate_decision": result["run"]["gate_decision"],
+            "attestation_available": result["run"]["attestation_available"],
+            "runtime_change_applied": False,
+        },
+    )
+
+
+@app.get("/api/v1/release-assurance/runs/{run_id}/attestation", tags=["Enterprise Release Assurance"])
+def enterprise_release_assurance_attestation(
+    run_id: str,
+    principal: EnterprisePrincipal = Depends(require_role("viewer")),
+) -> dict:
+    ensure_enterprise_resource_tenant(principal)
+    with SessionLocal() as session:
+        item = session.get(ReleaseAssuranceRun, run_id)
+        if not item:
+            raise HTTPException(status_code=404, detail="Release assurance run not found.")
+        return {**release_assurance_attestation(item), "tenant_id": principal.tenant_id}
 
 
 @app.get("/api/v1/security/attack-paths", tags=["Enterprise Agent Security"])
