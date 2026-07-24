@@ -16,6 +16,7 @@ This file records material platform changes for operators, reviewers, and integr
 - Production attestation fails closed when `RELEASE_ATTESTATION_KEY` is absent; signing key material is never returned to the client.
 - Blocking control failures cannot be approved, and the initiating operator cannot approve the same certification run.
 - An attestation explicitly authorizes only an external pipeline and never performs a deployment or runtime mutation.
+- The frontend lockfile resolves PostCSS to `8.5.23`, removing the high-severity source-map path traversal advisory reported against versions through `8.5.17`.
 
 ### Operational impact
 
@@ -25,7 +26,7 @@ This file records material platform changes for operators, reviewers, and integr
 ### Validation
 
 - Backend test suite: 63 tests passed, including local, enterprise, integrity, and fail-closed release-assurance contracts.
-- Frontend production build and Docker Compose configuration validation completed successfully.
+- Frontend production build, zero-high-severity npm audit, and Docker Compose configuration validation completed successfully.
 - Alembic upgraded a fresh database to `c9e7a4d51b20 (head)` with no model/schema drift.
 - Browser validation covered safe GO, blocked NO-GO, maker-checker, attestation availability, and responsive layouts at 1440, 768, and 375 CSS pixels.
 
