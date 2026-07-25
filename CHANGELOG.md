@@ -11,6 +11,7 @@ This file records material platform changes for operators, reviewers, and integr
 - Safe and intentionally unsafe candidate bundles for demonstrating that approval removal produces a non-overridable `NO-GO` with modeled customer-record exposure.
 - Guided client and engineering presentation steps, API examples, ADR 0012, operator screenshots, and updated demo media for adversarial release certification.
 - A 59-second, watermark-free workflow explainer with offline English narration, a full-resolution README poster, and reproducible HyperFrames source covering evidence binding, policy decisions, scoped authority, replay, modeled blast radius, and non-deploying release assurance.
+- Browser-direct workflow video playback through the repository's free GitHub Pages endpoint, avoiding the oversized-file preview and download path in the GitHub blob interface.
 
 ### Security
 
