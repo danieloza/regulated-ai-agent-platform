@@ -3387,7 +3387,7 @@ function App() {
                       <textarea rows="3" value={codeAssuranceComment} onChange={(event) => setCodeAssuranceComment(event.target.value)} disabled={!["awaiting_remediation_approval", "evidence_imported"].includes(selectedCodeAssuranceRun.status)} />
                     </label>
                     {["awaiting_remediation_approval", "evidence_imported"].includes(selectedCodeAssuranceRun.status) ? (
-                      <div><button type="button" disabled={Boolean(codeAssuranceBusy)} onClick={() => decideCodeAssurance("deny")}><OctagonX size={15} />Deny</button><button className="primary" type="button" disabled={Boolean(codeAssuranceBusy)} onClick={() => decideCodeAssurance("approve")}><UserCheck size={15} />Approve for validation</button></div>
+                      <div className="code-remediation-actions"><button type="button" disabled={Boolean(codeAssuranceBusy)} onClick={() => decideCodeAssurance("deny")}><OctagonX size={15} />Deny</button><button className="primary" type="button" disabled={Boolean(codeAssuranceBusy)} onClick={() => decideCodeAssurance("approve")}><UserCheck size={15} />Approve for validation</button></div>
                     ) : (
                       <div className="code-terminal"><CheckCircle2 size={17} /><strong>{selectedCodeAssuranceRun.remediation.state.replaceAll("_", " ")}</strong><span>patch applied: no</span></div>
                     )}
