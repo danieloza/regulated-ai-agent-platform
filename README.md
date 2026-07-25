@@ -239,11 +239,11 @@ See [Enterprise Deployment Roadmap](docs/enterprise-deployment-roadmap.md) for t
 
 ### Workflow Explainer
 
-[![Watch the Regulated AI Agent Platform workflow explainer](docs/screenshots/regulated-ai-workflow-explainer.png)](https://danieloza.github.io/regulated-ai-agent-platform/media/regulated-ai-workflow-explainer.mp4)
+https://github.com/user-attachments/assets/90b56729-f937-4c41-9cef-b250e1522eda
 
-[▶ Play the video directly in your browser](https://danieloza.github.io/regulated-ai-agent-platform/media/regulated-ai-workflow-explainer.mp4)
+[Open the full-resolution video in the browser](https://danieloza.github.io/regulated-ai-agent-platform/media/regulated-ai-workflow-explainer.mp4)
 
-Click the full-resolution frame to open the native browser player for the 59-second, watermark-free workflow animation with English voice-over. It follows one request through source-bound evidence, policy decisions, scoped tools, human approval, Policy Replay, Security Twin analysis, and adversarial release assurance. The final `GO` remains authorization evidence; it does not trigger deployment.
+The embedded 59-second, watermark-free workflow animation has English voice-over and follows one request through source-bound evidence, policy decisions, scoped tools, human approval, Policy Replay, Security Twin analysis, and adversarial release assurance. The final `GO` remains authorization evidence; it does not trigger deployment.
 
 ### Guided Operator Tour
 
