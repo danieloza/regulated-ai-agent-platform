@@ -14,3 +14,6 @@ output/video-review/
 videos/**/node_modules/
 videos/**/renders/
 videos/**/snapshots/
+
+# Video production sources are maintained on the media-production branch.
+/videos/
