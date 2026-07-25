@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+  <body>
+    <template>
+      <style>
+        #root {
+          position:absolute; inset:0; width:1920px; height:1080px; overflow:hidden; color:#f5f7fa; font-family:"Segoe UI",Arial,sans-serif;
+          background:
+            radial-gradient(circle at 50% 48%,rgba(54,209,196,.13),transparent 34%),
+            linear-gradient(rgba(43,65,98,.18) 1px,transparent 1px),
+            linear-gradient(90deg,rgba(43,65,98,.18) 1px,transparent 1px),#0b1020;
+          background-size:auto,64px 64px,64px 64px,auto;
+        }
+        * { box-sizing:border-box; }
+        .chrome { position:absolute; top:58px; left:112px; right:112px; display:flex; justify-content:space-between; color:#a8b3c7; font:700 21px Consolas,monospace; letter-spacing:.12em; }
+        .brand { color:#36d1c4; }
+        .index { position:absolute; left:112px; top:244px; color:#36d1c4; font:700 22px Consolas,monospace; }
+        .title { position:absolute; left:252px; top:150px; margin:0; font:900 66px/1 "Arial Black",Arial,sans-serif; letter-spacing:-.04em; }
+        .stage { position:absolute; left:260px; right:220px; top:345px; height:370px; display:grid; grid-template-columns:520px 230px 1fr; gap:64px; align-items:center; }
+        .pack { position:relative; min-height:285px; padding:32px; border:1px solid rgba(54,209,196,.58); border-radius:18px; background:linear-gradient(145deg,rgba(54,209,196,.12),rgba(20,33,61,.96)); box-shadow:0 0 44px rgba(54,209,196,.1); }
+        .pack-head { display:flex; justify-content:space-between; align-items:center; }
+        .pack-title { color:#36d1c4; font:900 22px "Arial Black",Arial,sans-serif; }
+        .verified { padding:8px 12px; border-radius:99px; color:#51d88a; background:rgba(81,216,138,.1); font:700 13px Consolas,monospace; }
+        .pack-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:28px; }
+        .pack-row { padding:14px; border:1px solid #2b4162; border-radius:10px; color:#dfe6ef; font:700 14px Consolas,monospace; }
+        .pack-hash { margin-top:20px; color:#a8b3c7; font:500 13px Consolas,monospace; }
+        .arrow { position:relative; height:4px; background:#2b4162; transform-origin:left center; }
+        .arrow::after { content:""; position:absolute; right:-2px; top:-7px; width:16px; height:16px; border-top:4px solid #36d1c4; border-right:4px solid #36d1c4; transform:rotate(45deg); }
+        .boundary { position:relative; min-height:330px; padding:34px; border:1px solid #2b4162; border-radius:20px; background:rgba(20,33,61,.95); }
+        .boundary-label { color:#a8b3c7; font:700 14px Consolas,monospace; letter-spacing:.08em; }
+        .authorization { margin-top:24px; padding:23px; border-left:5px solid #51d88a; background:rgba(81,216,138,.08); }
+        .authorization strong { color:#51d88a; font-size:26px; }
+        .authorization p { margin:9px 0 0; color:#dfe6ef; font-size:18px; }
+        .deploy { margin-top:20px; display:flex; align-items:center; gap:20px; padding:22px; border:1px solid rgba(255,92,108,.5); border-radius:14px; background:rgba(255,92,108,.06); }
+        .lock { width:52px; height:52px; display:grid; place-items:center; border:2px solid #ff5c6c; border-radius:12px; color:#ff5c6c; font-size:25px; }
+        .deploy strong { color:#ff5c6c; font:900 20px "Arial Black",Arial,sans-serif; }
+        .deploy p { margin:7px 0 0; color:#a8b3c7; font:500 14px Consolas,monospace; }
+        .caption { position:absolute; left:252px; right:166px; bottom:68px; padding-top:22px; border-top:1px solid #2b4162; color:#dfe6ef; font-size:27px; }
+        .caption strong { color:#36d1c4; }
+      </style>
+      <div id="root" data-composition-id="06-control" data-width="1920" data-height="1080" data-duration="5.28">
+        <div class="chrome"><span class="brand">REGULATED AI AGENT PLATFORM</span><span>CONTROL PLANE / 06</span></div>
+        <div class="index">06 — AUTHORIZATION BOUNDARY</div>
+        <h1 class="title" id="s6-title">Evidence unlocks authority — not deployment.</h1>
+        <div class="stage">
+          <div class="pack" id="s6-pack">
+            <div class="pack-head"><span class="pack-title">EVIDENCE PACK</span><span class="verified">VERIFIED</span></div>
+            <div class="pack-grid"><div class="pack-row">POLICY DECISION</div><div class="pack-row">CITATIONS</div><div class="pack-row">TOOL SCOPE</div><div class="pack-row">HUMAN APPROVAL</div></div>
+            <div class="pack-hash">sha256: 7f3b…9ac1 · immutable audit reference</div>
+          </div>
+          <div class="arrow" id="s6-arrow"></div>
+          <div class="boundary" id="s6-boundary">
+            <div class="boundary-label">EXTERNAL CHANGE BOUNDARY</div>
+            <div class="authorization" id="s6-auth"><strong>AUTHORIZED FOR REVIEW</strong><p>Identity, policy version, and evidence chain remain attached.</p></div>
+            <div class="deploy" id="s6-deploy"><div class="lock">⌁</div><div><strong>AUTOMATIC DEPLOYMENT LOCKED</strong><p>separate operational control remains required</p></div></div>
+          </div>
+        </div>
+        <div class="caption" id="s6-caption"><strong>EVIDENCE, NOT DEPLOYMENT.</strong> The platform proves what may be authorized, why, and by whom.</div>
+        <script>
+          window.__timelines=window.__timelines||{};
+          const tl=gsap.timeline({paused:true});
+          tl.fromTo("#s6-title",{opacity:0,y:34},{opacity:1,y:0,duration:.65,ease:"power3.out"},.1)
+            .fromTo("#s6-pack",{opacity:0,x:-65},{opacity:1,x:0,duration:.65,ease:"power3.out"},.55)
+            .fromTo(".pack-row",{opacity:0,y:18},{opacity:1,y:0,duration:.35,stagger:.12,ease:"power2.out"},1.0)
+            .fromTo("#s6-arrow",{scaleX:0},{scaleX:1,duration:.65,ease:"power2.out"},1.55)
+            .fromTo("#s6-boundary",{opacity:0,x:65},{opacity:1,x:0,duration:.65,ease:"power3.out"},1.85)
+            .fromTo("#s6-auth",{opacity:0,y:20},{opacity:1,y:0,duration:.45,ease:"power2.out"},2.35)
+            .fromTo("#s6-deploy",{opacity:0,y:20},{opacity:1,y:0,duration:.45,ease:"power2.out"},2.9)
+            .fromTo("#s6-caption",{opacity:0},{opacity:1,duration:.45},3.45)
+            .to("#s6-deploy",{scale:1.02,duration:.4,yoyo:true,repeat:2,ease:"power1.inOut"},3.75);
+          window.__timelines["06-control"]=tl;
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+  <body>
+    <template>
+      <style>
+        #root {
+          position:absolute; inset:0; width:1920px; height:1080px; overflow:hidden; color:#f5f7fa; font-family:"Segoe UI",Arial,sans-serif;
+          background:
+            radial-gradient(circle at 70% 48%,rgba(81,216,138,.10),transparent 28%),
+            radial-gradient(circle at 34% 48%,rgba(255,92,108,.10),transparent 28%),
+            linear-gradient(rgba(43,65,98,.18) 1px,transparent 1px),
+            linear-gradient(90deg,rgba(43,65,98,.18) 1px,transparent 1px),#0b1020;
+          background-size:auto,auto,64px 64px,64px 64px,auto;
+        }
+        * { box-sizing:border-box; }
+        .chrome { position:absolute; top:58px; left:112px; right:112px; display:flex; justify-content:space-between; color:#a8b3c7; font:700 21px Consolas,monospace; letter-spacing:.12em; }
+        .brand { color:#36d1c4; }
+        .index { position:absolute; left:112px; top:244px; color:#36d1c4; font:700 22px Consolas,monospace; }
+        .title { position:absolute; left:252px; top:150px; margin:0; font:900 66px/1 "Arial Black",Arial,sans-serif; letter-spacing:-.04em; }
+        .stage { position:absolute; left:180px; right:150px; top:315px; height:475px; display:grid; grid-template-columns:460px 270px 1fr; align-items:center; gap:50px; z-index:1; }
+        .signals { display:grid; gap:16px; }
+        .signal { min-height:102px; padding:21px 24px; border:1px solid #2b4162; border-radius:16px; background:rgba(20,33,61,.94); }
+        .signal-head { display:flex; justify-content:space-between; color:#a8b3c7; font:700 14px Consolas,monospace; letter-spacing:.07em; }
+        .signal-status { color:#51d88a; }
+        .signal-name { margin-top:12px; font-size:22px; font-weight:800; }
+        .signal.warning .signal-status { color:#f4b400; }
+        .engine { position:relative; height:305px; display:grid; place-items:center; text-align:center; border:1px solid rgba(54,209,196,.55); border-radius:50%; background:radial-gradient(circle,rgba(54,209,196,.18),rgba(20,33,61,.92) 68%); box-shadow:0 0 58px rgba(54,209,196,.15); }
+        .engine::before,.engine::after { content:""; position:absolute; border-radius:50%; border:1px dashed rgba(54,209,196,.35); }
+        .engine::before { inset:22px; } .engine::after { inset:54px; }
+        .engine-name { position:relative; z-index:2; font:900 26px/1.12 "Arial Black",Arial,sans-serif; }
+        .engine-meta { position:relative; z-index:2; margin-top:12px; color:#36d1c4; font:700 13px Consolas,monospace; }
+        .result { position:relative; height:410px; border:1px solid #2b4162; border-radius:20px; background:rgba(20,33,61,.96); overflow:hidden; }
+        .result-head { height:68px; padding:0 27px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid #2b4162; }
+        .result-head strong { font:900 20px "Arial Black",Arial,sans-serif; }
+        .candidate { color:#a8b3c7; font:700 14px Consolas,monospace; }
+        .verdicts { position:relative; height:215px; }
+        .verdict { position:absolute; inset:24px 28px; display:grid; grid-template-columns:190px 1fr; align-items:center; gap:32px; }
+        .badge { height:150px; display:grid; place-items:center; border:2px solid; border-radius:18px; font:900 43px "Arial Black",Arial,sans-serif; }
+        .no-go .badge { color:#ff5c6c; border-color:#ff5c6c; background:rgba(255,92,108,.08); }
+        .go .badge { color:#51d88a; border-color:#51d88a; background:rgba(81,216,138,.08); }
+        #s5-go { opacity:0; }
+        .reason-title { font-size:22px; font-weight:800; }
+        .reason-value { margin-top:12px; font:900 42px "Arial Black",Arial,sans-serif; letter-spacing:-.03em; }
+        .no-go .reason-value { color:#ff5c6c; } .go .reason-value { color:#51d88a; }
+        .reason-note { margin-top:10px; color:#a8b3c7; font:500 15px Consolas,monospace; }
+        .attestation { margin:0 28px; min-height:92px; display:flex; align-items:center; gap:19px; padding:19px 22px; border:1px solid rgba(54,209,196,.5); border-radius:14px; background:rgba(54,209,196,.07); }
+        .seal { width:50px; height:50px; display:grid; place-items:center; border:2px solid #36d1c4; border-radius:50%; color:#36d1c4; font-weight:900; }
+        .attest-title { color:#36d1c4; font:700 15px Consolas,monospace; letter-spacing:.07em; }
+        .attest-meta { margin-top:7px; color:#dfe6ef; font-size:17px; }
+        .arrow { position:absolute; top:542px; height:4px; background:#2b4162; transform-origin:left center; z-index:0; }
+        #s5-line1 { left:640px; width:130px; } #s5-line2 { left:1040px; width:130px; }
+        .caption { position:absolute; left:252px; right:166px; bottom:68px; padding-top:22px; border-top:1px solid #2b4162; color:#dfe6ef; font-size:27px; }
+        .caption strong { color:#36d1c4; }
+      </style>
+      <div id="root" data-composition-id="05-assurance" data-width="1920" data-height="1080" data-duration="9.33">
+        <div class="chrome"><span class="brand">REGULATED AI AGENT PLATFORM</span><span>CONTROL PLANE / 05</span></div>
+        <div class="index">05 — ADVERSARIAL RELEASE ASSURANCE</div>
+        <h1 class="title" id="s5-title">Signals become a governed recommendation.</h1>
+        <div class="stage">
+          <div class="signals">
+            <div class="signal" id="s5-s1"><div class="signal-head"><span>POLICY REPLAY</span><span class="signal-status">PASSED</span></div><div class="signal-name">Historical decision regression</div></div>
+            <div class="signal warning" id="s5-s2"><div class="signal-head"><span>SECURITY TWIN</span><span class="signal-status">HIGH</span></div><div class="signal-name">Modeled blast radius</div></div>
+            <div class="signal" id="s5-s3"><div class="signal-head"><span>RED TEAM</span><span class="signal-status">PASSED</span></div><div class="signal-name">Adversarial evaluation suite</div></div>
+          </div>
+          <div class="engine" id="s5-engine"><div><div class="engine-name">RELEASE<br>ASSURANCE</div><div class="engine-meta">EVIDENCE FUSION</div></div></div>
+          <div class="result" id="s5-result">
+            <div class="result-head"><strong>RELEASE DECISION</strong><span class="candidate" id="s5-candidate">candidate / 07-A</span></div>
+            <div class="verdicts">
+              <div class="verdict no-go" id="s5-nogo"><div class="badge">NO-GO</div><div><div class="reason-title">Modeled exposure</div><div class="reason-value">1,042 RECORDS</div><div class="reason-note">candidate blocked before rollout</div></div></div>
+              <div class="verdict go" id="s5-go"><div class="badge">GO</div><div><div class="reason-title">Residual modeled exposure</div><div class="reason-value">0 RECORDS</div><div class="reason-note">eligible for governed authorization</div></div></div>
+            </div>
+            <div class="attestation" id="s5-attest"><div class="seal">✓</div><div><div class="attest-title">INTEGRITY ATTESTATION</div><div class="attest-meta">maker ≠ checker · evidence hash verified</div></div></div>
+          </div>
+        </div>
+        <div class="arrow" id="s5-line1"></div><div class="arrow" id="s5-line2"></div>
+        <div class="caption" id="s5-caption"><strong>GO / NO-GO</strong> is evidence-backed authorization input — never an automatic deployment.</div>
+        <script>
+          window.__timelines=window.__timelines||{};
+          const tl=gsap.timeline({paused:true});
+          tl.fromTo("#s5-title",{opacity:0,y:34},{opacity:1,y:0,duration:.7,ease:"power3.out"},.15)
+            .fromTo(".signal",{opacity:0,x:-55},{opacity:1,x:0,duration:.5,stagger:.28,ease:"power3.out"},.7)
+            .fromTo("#s5-line1",{scaleX:0},{scaleX:1,duration:.5,ease:"power2.out"},1.7)
+            .fromTo("#s5-engine",{opacity:0,scale:.72},{opacity:1,scale:1,duration:.7,ease:"back.out(1.4)"},1.95)
+            .fromTo("#s5-line2",{scaleX:0},{scaleX:1,duration:.5,ease:"power2.out"},2.7)
+            .fromTo("#s5-result",{opacity:0,x:65},{opacity:1,x:0,duration:.7,ease:"power3.out"},3.0)
+            .fromTo("#s5-nogo",{opacity:0,y:28},{opacity:1,y:0,duration:.55,ease:"power3.out"},3.5)
+            .to("#s5-nogo",{opacity:0,y:-25,duration:.45,ease:"power2.in"},5.0)
+            .set("#s5-candidate",{innerText:"candidate / 07-B"},5.25)
+            .fromTo("#s5-go",{opacity:0,y:28},{opacity:1,y:0,duration:.55,ease:"power3.out"},5.25)
+            .fromTo("#s5-attest",{opacity:0,y:25},{opacity:1,y:0,duration:.5,ease:"power3.out"},6.2)
+            .fromTo("#s5-caption",{opacity:0},{opacity:1,duration:.45},6.85)
+            .to("#s5-go .badge",{scale:1.05,duration:.5,yoyo:true,repeat:2,ease:"power1.inOut"},7.2);
+          window.__timelines["05-assurance"]=tl;
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

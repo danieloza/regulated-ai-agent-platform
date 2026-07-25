@@ -10,3 +10,7 @@ frontend/dist/
 outputs/
 .playwright-cli/
 output/playwright/
+output/video-review/
+videos/**/node_modules/
+videos/**/renders/
+videos/**/snapshots/

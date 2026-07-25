@@ -237,6 +237,14 @@ See [Enterprise Deployment Roadmap](docs/enterprise-deployment-roadmap.md) for t
 
 ## Demo
 
+### Workflow Explainer
+
+[![Watch the Regulated AI Agent Platform workflow explainer](docs/screenshots/regulated-ai-workflow-explainer.png)](docs/media/regulated-ai-workflow-explainer.mp4)
+
+Click the full-resolution frame to play the 59-second, watermark-free workflow animation with English voice-over. It follows one request through source-bound evidence, policy decisions, scoped tools, human approval, Policy Replay, Security Twin analysis, and adversarial release assurance. The final `GO` remains authorization evidence; it does not trigger deployment.
+
+### Guided Operator Tour
+
 ![Regulated AI Agent Platform demo](docs/demo.gif)
 
 The guided client and HR stories include the Enterprise Identity & Trust Plane and the Release Assurance War Room. They continue from source-bound RAG through adversarial testing, modeled attack paths, governed change synthesis, joined release certification, independent approval, and integrity evidence without granting the agent runtime or deployment authority.

@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+  <body>
+    <template>
+      <style>
+        #root {
+          position: absolute;
+          inset: 0;
+          width: 1920px;
+          height: 1080px;
+          overflow: hidden;
+          color: #f5f7fa;
+          font-family: "Segoe UI", Arial, sans-serif;
+          background:
+            radial-gradient(circle at 77% 44%, rgba(54, 209, 196, 0.14), transparent 33%),
+            linear-gradient(rgba(43, 65, 98, 0.2) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(43, 65, 98, 0.2) 1px, transparent 1px),
+            #0b1020;
+          background-size: auto, 64px 64px, 64px 64px, auto;
+        }
+        * { box-sizing: border-box; }
+        .chrome {
+          position: absolute;
+          top: 58px;
+          left: 112px;
+          right: 112px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          color: #a8b3c7;
+          font: 700 21px Consolas, monospace;
+          letter-spacing: 0.12em;
+        }
+        .brand { color: #36d1c4; }
+        .index {
+          position: absolute;
+          left: 112px;
+          top: 196px;
+          color: #36d1c4;
+          font: 700 26px Consolas, monospace;
+        }
+        .content {
+          position: absolute;
+          left: 252px;
+          right: 166px;
+          top: 184px;
+          bottom: 180px;
+          display: grid;
+          grid-template-columns: 710px 1fr;
+          align-items: center;
+          gap: 96px;
+        }
+        .headline {
+          margin: 0;
+          font: 900 84px/0.98 "Arial Black", Arial, sans-serif;
+          letter-spacing: -0.045em;
+          max-width: 710px;
+        }
+        .headline em { color: #36d1c4; font-style: normal; }
+        .sub {
+          margin-top: 36px;
+          max-width: 620px;
+          color: #a8b3c7;
+          font-size: 30px;
+          line-height: 1.45;
+        }
+        .question-stack {
+          position: relative;
+          height: 620px;
+          display: grid;
+          align-content: center;
+          gap: 18px;
+        }
+        .question {
+          position: relative;
+          min-height: 120px;
+          display: flex;
+          align-items: center;
+          gap: 24px;
+          padding: 25px 30px;
+          border: 1px solid #2b4162;
+          border-radius: 18px;
+          background: rgba(20, 33, 61, 0.88);
+          box-shadow: 0 0 42px rgba(54, 209, 196, 0.08);
+          overflow: hidden;
+        }
+        .question::before {
+          content: "";
+          display: block;
+          width: 6px;
+          height: 70px;
+          border-radius: 99px;
+          background: #2b4162;
+          flex: 0 0 auto;
+        }
+        .question.primary {
+          border-color: rgba(54, 209, 196, 0.7);
+          background: linear-gradient(110deg, rgba(54, 209, 196, 0.16), rgba(20, 33, 61, 0.94));
+        }
+        .question.primary::before { background: #36d1c4; }
+        .q-label {
+          color: #a8b3c7;
+          font: 700 17px Consolas, monospace;
+          letter-spacing: 0.11em;
+          text-transform: uppercase;
+        }
+        .q-text {
+          margin-top: 8px;
+          font-size: 31px;
+          font-weight: 700;
+        }
+        .caption {
+          position: absolute;
+          left: 252px;
+          right: 166px;
+          bottom: 68px;
+          padding-top: 22px;
+          border-top: 1px solid #2b4162;
+          color: #dfe6ef;
+          font-size: 27px;
+        }
+        .caption strong { color: #36d1c4; }
+      </style>
+      <div id="root" data-composition-id="01-hook" data-width="1920" data-height="1080" data-duration="7.65">
+        <div class="chrome">
+          <span class="brand">REGULATED AI AGENT PLATFORM</span>
+          <span>CONTROL PLANE / 01</span>
+        </div>
+        <div class="index">01 — GOVERNANCE GAP</div>
+        <div class="content">
+          <div>
+            <h1 class="headline" id="s1-headline">Task completion is only the <em>first</em> question.</h1>
+            <p class="sub" id="s1-sub">In regulated environments, capability must be paired with evidence, authority, and accountability.</p>
+          </div>
+          <div class="question-stack">
+            <div class="question primary" id="s1-q1">
+              <div><div class="q-label">Capability</div><div class="q-text">Can the agent complete the task?</div></div>
+            </div>
+            <div class="question" id="s1-q2">
+              <div><div class="q-label">Policy</div><div class="q-text">Should it?</div></div>
+            </div>
+            <div class="question" id="s1-q3">
+              <div><div class="q-label">Authority</div><div class="q-text">Who approved it?</div></div>
+            </div>
+            <div class="question" id="s1-q4">
+              <div><div class="q-label">Evidence</div><div class="q-text">Can we prove it?</div></div>
+            </div>
+          </div>
+        </div>
+        <div class="caption" id="s1-caption"><strong>Capability alone is insufficient.</strong> Governance begins before execution.</div>
+        <script>
+          window.__timelines = window.__timelines || {};
+          const tl = gsap.timeline({ paused: true });
+          tl.fromTo("#s1-headline", { opacity: 0, y: 48 }, { opacity: 1, y: 0, duration: 0.75, ease: "power3.out" }, 0.2)
+            .fromTo("#s1-sub", { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: 0.6, ease: "power2.out" }, 0.72)
+            .fromTo("#s1-q1", { opacity: 0, x: 90 }, { opacity: 1, x: 0, duration: 0.65, ease: "power3.out" }, 0.6)
+            .fromTo("#s1-q2", { opacity: 0, x: 90 }, { opacity: 1, x: 0, duration: 0.55, ease: "power3.out" }, 2.2)
+            .fromTo("#s1-q3", { opacity: 0, x: 90 }, { opacity: 1, x: 0, duration: 0.55, ease: "power3.out" }, 3.2)
+            .fromTo("#s1-q4", { opacity: 0, x: 90 }, { opacity: 1, x: 0, duration: 0.55, ease: "power3.out" }, 4.2)
+            .fromTo("#s1-caption", { opacity: 0 }, { opacity: 1, duration: 0.5, ease: "power2.out" }, 5.1)
+            .to(".question:not(.primary)", { borderColor: "#36d1c4", duration: 0.35, stagger: 0.18 }, 5.6);
+          window.__timelines["01-hook"] = tl;
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

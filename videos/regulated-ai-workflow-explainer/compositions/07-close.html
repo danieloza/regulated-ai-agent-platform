@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+  <body>
+    <template>
+      <style>
+        #root {
+          position:absolute; inset:0; width:1920px; height:1080px; overflow:hidden; color:#f5f7fa; font-family:"Segoe UI",Arial,sans-serif;
+          background:
+            radial-gradient(circle at 50% 48%,rgba(54,209,196,.18),transparent 32%),
+            linear-gradient(rgba(43,65,98,.2) 1px,transparent 1px),
+            linear-gradient(90deg,rgba(43,65,98,.2) 1px,transparent 1px),#0b1020;
+          background-size:auto,64px 64px,64px 64px,auto;
+        }
+        * { box-sizing:border-box; }
+        .frame { position:absolute; inset:76px 112px; border:1px solid #2b4162; border-radius:22px; }
+        .corner { position:absolute; width:68px; height:68px; border-color:#36d1c4; border-style:solid; }
+        .tl { left:-1px; top:-1px; border-width:4px 0 0 4px; border-radius:22px 0 0 0; }
+        .tr { right:-1px; top:-1px; border-width:4px 4px 0 0; border-radius:0 22px 0 0; }
+        .bl { left:-1px; bottom:-1px; border-width:0 0 4px 4px; border-radius:0 0 0 22px; }
+        .br { right:-1px; bottom:-1px; border-width:0 4px 4px 0; border-radius:0 0 22px 0; }
+        .mark { position:absolute; left:50%; top:265px; width:116px; height:116px; margin-left:-58px; display:grid; place-items:center; border:2px solid #36d1c4; border-radius:28px; transform:rotate(45deg); box-shadow:0 0 48px rgba(54,209,196,.25); background:rgba(54,209,196,.06); }
+        .mark span { transform:rotate(-45deg); color:#36d1c4; font:900 46px Consolas,monospace; }
+        .title { position:absolute; left:250px; right:250px; top:435px; margin:0; text-align:center; font:900 78px/.98 "Arial Black",Arial,sans-serif; letter-spacing:-.045em; }
+        .tagline { position:absolute; left:250px; right:250px; top:570px; text-align:center; color:#36d1c4; font:700 27px Consolas,monospace; letter-spacing:.18em; }
+        .rail { position:absolute; left:430px; right:430px; top:690px; height:2px; background:#2b4162; transform-origin:center center; }
+        .principles { position:absolute; left:420px; right:420px; top:742px; display:flex; justify-content:space-between; color:#a8b3c7; font:700 16px Consolas,monospace; letter-spacing:.08em; }
+        .proof { position:absolute; left:50%; bottom:114px; transform:translateX(-50%); padding:13px 18px; border:1px solid rgba(81,216,138,.5); border-radius:99px; color:#51d88a; background:rgba(81,216,138,.08); font:700 14px Consolas,monospace; letter-spacing:.08em; white-space:nowrap; }
+      </style>
+      <div id="root" data-composition-id="07-close" data-width="1920" data-height="1080" data-duration="4.19">
+        <div class="frame" id="s7-frame"><span class="corner tl"></span><span class="corner tr"></span><span class="corner bl"></span><span class="corner br"></span></div>
+        <div class="mark" id="s7-mark"><span>RA</span></div>
+        <h1 class="title" id="s7-title">REGULATED AI AGENT PLATFORM</h1>
+        <div class="tagline" id="s7-tagline">EVIDENCE BEFORE AUTHORITY</div>
+        <div class="rail" id="s7-rail"></div>
+        <div class="principles" id="s7-principles"><span>GROUND</span><span>GOVERN</span><span>AUTHORIZE</span><span>AUDIT</span></div>
+        <div class="proof" id="s7-proof">DETERMINISTIC · AUDITABLE · HUMAN-ACCOUNTABLE</div>
+        <script>
+          window.__timelines=window.__timelines||{};
+          const tl=gsap.timeline({paused:true});
+          tl.fromTo("#s7-frame",{opacity:0,scale:.96},{opacity:1,scale:1,duration:.7,ease:"power3.out"},.05)
+            .fromTo("#s7-mark",{opacity:0,scale:.4,rotation:-45},{opacity:1,scale:1,rotation:45,duration:.75,ease:"back.out(1.6)"},.3)
+            .fromTo("#s7-title",{opacity:0,y:34},{opacity:1,y:0,duration:.65,ease:"power3.out"},.75)
+            .fromTo("#s7-tagline",{opacity:0,y:20},{opacity:1,y:0,duration:.5,ease:"power2.out"},1.25)
+            .fromTo("#s7-rail",{scaleX:0},{scaleX:1,duration:.65,ease:"power2.out"},1.55)
+            .fromTo("#s7-principles span",{opacity:0,y:16},{opacity:1,y:0,duration:.35,stagger:.15,ease:"power2.out"},1.85)
+            .fromTo("#s7-proof",{opacity:0,y:18},{opacity:1,y:0,duration:.45,ease:"power2.out"},2.6)
+            .to("#s7-mark",{scale:1.07,duration:.5,yoyo:true,repeat:2,ease:"power1.inOut"},2.95);
+          window.__timelines["07-close"]=tl;
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

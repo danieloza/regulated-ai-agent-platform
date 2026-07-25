@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+  <body>
+    <template>
+      <style>
+        #root {
+          position: absolute;
+          inset: 0;
+          width: 1920px;
+          height: 1080px;
+          overflow: hidden;
+          color: #f5f7fa;
+          font-family: "Segoe UI", Arial, sans-serif;
+          background:
+            radial-gradient(circle at 44% 48%, rgba(54, 209, 196, 0.12), transparent 34%),
+            linear-gradient(rgba(43, 65, 98, 0.18) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(43, 65, 98, 0.18) 1px, transparent 1px),
+            #0b1020;
+          background-size: auto, 64px 64px, 64px 64px, auto;
+        }
+        * { box-sizing: border-box; }
+        .chrome { position:absolute; top:58px; left:112px; right:112px; display:flex; justify-content:space-between; color:#a8b3c7; font:700 21px Consolas,monospace; letter-spacing:.12em; }
+        .brand { color:#36d1c4; }
+        .index { position:absolute; left:112px; top:244px; color:#36d1c4; font:700 22px Consolas,monospace; }
+        .title { position:absolute; left:252px; top:150px; margin:0; font:900 66px/1 "Arial Black",Arial,sans-serif; letter-spacing:-.04em; }
+        .corridor {
+          position:absolute; left:180px; right:150px; top:300px; height:500px;
+          display:grid; grid-template-columns:420px 250px 420px 1fr; align-items:center; gap:34px;
+        }
+        .evidence-stack { display:grid; gap:16px; }
+        .doc {
+          position:relative; min-height:105px; padding:22px 24px 18px 82px;
+          border:1px solid #2b4162; border-radius:16px; background:rgba(20,33,61,.92);
+        }
+        .doc::before { content:"✓"; position:absolute; left:24px; top:25px; width:36px; height:36px; display:grid; place-items:center; border-radius:50%; background:rgba(81,216,138,.14); color:#51d88a; font-weight:900; }
+        .doc-label { color:#51d88a; font:700 15px Consolas,monospace; letter-spacing:.1em; }
+        .doc-name { margin-top:7px; font-size:24px; font-weight:700; }
+        .doc-meta { margin-top:5px; color:#a8b3c7; font:500 16px Consolas,monospace; }
+        .node {
+          position:relative; height:190px; display:grid; place-items:center; text-align:center;
+          border:1px solid rgba(54,209,196,.64); border-radius:28px; background:linear-gradient(145deg,rgba(54,209,196,.18),rgba(20,33,61,.95));
+          box-shadow:0 0 50px rgba(54,209,196,.12);
+        }
+        .node-ring { position:absolute; inset:20px; border:1px dashed rgba(54,209,196,.4); border-radius:20px; }
+        .node-kicker { color:#36d1c4; font:700 15px Consolas,monospace; letter-spacing:.14em; }
+        .node-name { margin-top:10px; font:900 31px "Arial Black",Arial,sans-serif; }
+        .answer {
+          min-height:300px; padding:32px; border:1px solid #2b4162; border-radius:18px; background:rgba(20,33,61,.94);
+        }
+        .answer-head { display:flex; align-items:center; justify-content:space-between; padding-bottom:22px; border-bottom:1px solid #2b4162; }
+        .answer-head strong { font-size:25px; }
+        .bound { padding:8px 12px; border-radius:99px; background:rgba(81,216,138,.13); color:#51d88a; font:700 14px Consolas,monospace; }
+        .answer-text { margin-top:27px; color:#dfe6ef; font-size:23px; line-height:1.5; }
+        .cites { display:flex; gap:10px; margin-top:28px; }
+        .cite { padding:10px 13px; border:1px solid rgba(54,209,196,.45); border-radius:8px; color:#36d1c4; font:700 14px Consolas,monospace; }
+        .decisions { display:grid; gap:16px; }
+        .decision { min-height:84px; display:flex; align-items:center; justify-content:center; border:1px solid #2b4162; border-radius:14px; background:#14213d; font:900 18px Consolas,monospace; letter-spacing:.08em; }
+        .allow { color:#51d88a; border-color:rgba(81,216,138,.5); }
+        .deny { color:#ff5c6c; border-color:rgba(255,92,108,.5); }
+        .approval { color:#f4b400; border-color:rgba(244,180,0,.5); text-align:center; }
+        .connector { position:absolute; top:536px; height:4px; border-radius:4px; background:#2b4162; transform-origin:left center; }
+        #s2-line1 { left:586px; width:250px; }
+        #s2-line2 { left:876px; width:380px; }
+        #s2-line3 { left:1295px; width:235px; }
+        .pulse { position:absolute; top:529px; width:18px; height:18px; border-radius:50%; background:#36d1c4; box-shadow:0 0 24px rgba(54,209,196,.75); }
+        #s2-pulse { left:578px; }
+        .caption { position:absolute; left:252px; right:166px; bottom:68px; padding-top:22px; border-top:1px solid #2b4162; color:#dfe6ef; font-size:27px; }
+        .caption strong { color:#36d1c4; }
+      </style>
+      <div id="root" data-composition-id="02-evidence" data-width="1920" data-height="1080" data-duration="10.4">
+        <div class="chrome"><span class="brand">REGULATED AI AGENT PLATFORM</span><span>CONTROL PLANE / 02</span></div>
+        <div class="index">02 — SOURCE-BOUND DECISION</div>
+        <h1 class="title" id="s2-title">Evidence enters before authority.</h1>
+        <div class="corridor">
+          <div class="evidence-stack">
+            <div class="doc" id="s2-doc1"><div class="doc-label">APPROVED SOURCE</div><div class="doc-name">Customer policy</div><div class="doc-meta">revision 7 · verified</div></div>
+            <div class="doc" id="s2-doc2"><div class="doc-label">APPROVED SOURCE</div><div class="doc-name">Case-handling standard</div><div class="doc-meta">controlled corpus</div></div>
+            <div class="doc" id="s2-doc3"><div class="doc-label">APPROVED SOURCE</div><div class="doc-name">Disclosure rules</div><div class="doc-meta">citation required</div></div>
+          </div>
+          <div class="node" id="s2-rag"><div class="node-ring"></div><div><div class="node-kicker">SOURCE-BOUND</div><div class="node-name">RAG</div></div></div>
+          <div class="answer" id="s2-answer">
+            <div class="answer-head"><strong>Grounded answer</strong><span class="bound">BOUND</span></div>
+            <div class="answer-text">The response is limited to approved evidence and returns uncertainty safely when evidence is insufficient.</div>
+            <div class="cites"><span class="cite">[POL-7]</span><span class="cite">[STD-4]</span></div>
+          </div>
+          <div class="decisions">
+            <div class="decision allow" id="s2-allow">ALLOWED</div>
+            <div class="decision deny" id="s2-deny">DENIED</div>
+            <div class="decision approval" id="s2-approval">APPROVAL REQUIRED</div>
+          </div>
+        </div>
+        <div class="connector" id="s2-line1"></div><div class="connector" id="s2-line2"></div><div class="connector" id="s2-line3"></div><div class="pulse" id="s2-pulse"></div>
+        <div class="caption" id="s2-caption"><strong>SOURCE-BOUND EVIDENCE</strong> keeps retrieval untrusted and the answer auditable.</div>
+        <script>
+          window.__timelines = window.__timelines || {};
+          const tl = gsap.timeline({ paused: true });
+          tl.fromTo("#s2-title", { opacity:0, y:34 }, { opacity:1, y:0, duration:.7, ease:"power3.out" }, .15)
+            .fromTo(".doc", { opacity:0, x:-70 }, { opacity:1, x:0, duration:.55, stagger:.18, ease:"power3.out" }, .7)
+            .fromTo("#s2-line1", { scaleX:0 }, { scaleX:1, duration:.5, ease:"power2.out" }, 1.8)
+            .fromTo("#s2-rag", { opacity:0, scale:.78 }, { opacity:1, scale:1, duration:.6, ease:"back.out(1.5)" }, 2.0)
+            .to("#s2-pulse", { x:690, duration:2.0, ease:"power1.inOut" }, 2.1)
+            .fromTo("#s2-line2", { scaleX:0 }, { scaleX:1, duration:.7, ease:"power2.out" }, 2.8)
+            .fromTo("#s2-answer", { opacity:0, y:35 }, { opacity:1, y:0, duration:.7, ease:"power3.out" }, 3.35)
+            .fromTo(".cite", { opacity:0, y:12 }, { opacity:1, y:0, duration:.35, stagger:.18, ease:"power2.out" }, 4.3)
+            .fromTo("#s2-line3", { scaleX:0 }, { scaleX:1, duration:.6, ease:"power2.out" }, 5.15)
+            .fromTo(".decision", { opacity:0, x:55 }, { opacity:1, x:0, duration:.5, stagger:.55, ease:"power3.out" }, 5.55)
+            .fromTo("#s2-caption", { opacity:0 }, { opacity:1, duration:.5 }, 7.35)
+            .to("#s2-rag", { scale:1.035, duration:.65, yoyo:true, repeat:2, ease:"power1.inOut" }, 7.8);
+          window.__timelines["02-evidence"] = tl;
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

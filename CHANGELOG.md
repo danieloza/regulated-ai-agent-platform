@@ -10,6 +10,7 @@ This file records material platform changes for operators, reviewers, and integr
 - Protected `/api/v1/release-assurance` resources with tenant enforcement, RBAC, idempotent certification and decision mutations, actor attribution, and outbox evidence.
 - Safe and intentionally unsafe candidate bundles for demonstrating that approval removal produces a non-overridable `NO-GO` with modeled customer-record exposure.
 - Guided client and engineering presentation steps, API examples, ADR 0012, operator screenshots, and updated demo media for adversarial release certification.
+- A 59-second, watermark-free workflow explainer with offline English narration, a full-resolution README poster, and reproducible HyperFrames source covering evidence binding, policy decisions, scoped authority, replay, modeled blast radius, and non-deploying release assurance.
 
 ### Security
 
