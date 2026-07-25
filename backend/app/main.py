@@ -62,7 +62,7 @@ GOVERNANCE_TEMPLATE_PATH = ROOT / "assets" / "governance-registry-template.xlsx"
 DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{DB_PATH}")
 POLICY_VERSION = os.getenv("POLICY_VERSION", "2026.07.10-default")
-ALEMBIC_HEAD_REVISION = "c9e7a4d51b20"
+ALEMBIC_HEAD_REVISION = "a7d3f8c19e42"
 APP_ENV = os.getenv("APP_ENV", "development").casefold()
 IS_PRODUCTION = APP_ENV in {"production", "prod"}
 EPHEMERAL_RELEASE_ATTESTATION_KEY = os.urandom(32)
@@ -579,6 +579,27 @@ class ReleaseAssuranceRun(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC), index=True)
 
 
+class CodeAssuranceRun(Base):
+    __tablename__ = "code_assurance_runs"
+
+    id: Mapped[str] = mapped_column(String(48), primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(String(80), default="demo", index=True)
+    repository_id: Mapped[str] = mapped_column(String(120), index=True)
+    commit_sha: Mapped[str] = mapped_column(String(40), index=True)
+    scanner_profile: Mapped[str] = mapped_column(String(80), index=True)
+    status: Mapped[str] = mapped_column(String(48), default="awaiting_remediation_approval", index=True)
+    policy_decision: Mapped[str] = mapped_column(String(40), default="approval_required", index=True)
+    initiated_by: Mapped[str] = mapped_column(String(120), index=True)
+    findings_json: Mapped[list] = mapped_column(JSON, default=list)
+    sarif_summary_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    attack_path_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    remediation_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    validation_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    evidence_digest: Mapped[str] = mapped_column(String(64), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC), index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC), index=True)
+
+
 class QueryRequest(BaseModel):
     question: str = Field(min_length=3, max_length=1200)
     user_id: str = "operator.demo"
@@ -662,7 +683,7 @@ class SecurityTwinContainmentDecisionRequest(BaseModel):
 class ReleaseAssuranceRunRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    bundle_id: Literal["guardrail-v2", "operations-fast-path"] = "guardrail-v2"
+    bundle_id: Literal["guardrail-v2", "operations-fast-path", "code-assurance-v1"] = "guardrail-v2"
     initiated_by: str = Field(default="release.operator", min_length=3, max_length=120)
 
 
@@ -677,7 +698,7 @@ class ReleaseAssuranceDecisionRequest(BaseModel):
 class EnterpriseReleaseAssuranceRunRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    bundle_id: Literal["guardrail-v2", "operations-fast-path"] = "guardrail-v2"
+    bundle_id: Literal["guardrail-v2", "operations-fast-path", "code-assurance-v1"] = "guardrail-v2"
 
 
 class EnterpriseReleaseAssuranceDecisionRequest(BaseModel):
@@ -701,6 +722,59 @@ class EnterpriseSecurityTwinSimulationRequest(BaseModel):
         "approval_bypass",
         "tenant_boundary_disabled",
     ] = "current"
+
+
+class CodeAssuranceRunRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    repository_id: Literal["regulated-ai-agent-platform"] = "regulated-ai-agent-platform"
+    commit_sha: str = Field(pattern=r"^[0-9a-f]{40}$")
+    scanner_profile: Literal["guardrail-regression", "secure-baseline"] = "guardrail-regression"
+    initiated_by: str = Field(default="code.operator", min_length=3, max_length=120)
+
+
+class CodeAssuranceDecisionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    action: Literal["approve", "deny"]
+    operator_id: str = Field(default="security.approver", min_length=3, max_length=120)
+    comment: str = Field(min_length=10, max_length=1000)
+
+
+class CodeAssuranceValidationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    operator_id: str = Field(default="release.operator", min_length=3, max_length=120)
+    artifact_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    build_passed: bool
+    tests_passed: bool
+    security_evals_passed: bool
+    test_count: int = Field(ge=1, le=100000)
+
+
+class EnterpriseCodeAssuranceRunRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    repository_id: Literal["regulated-ai-agent-platform"] = "regulated-ai-agent-platform"
+    commit_sha: str = Field(pattern=r"^[0-9a-f]{40}$")
+    scanner_profile: Literal["guardrail-regression", "secure-baseline"] = "guardrail-regression"
+
+
+class EnterpriseCodeAssuranceDecisionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    action: Literal["approve", "deny"]
+    comment: str = Field(min_length=10, max_length=1000)
+
+
+class EnterpriseCodeAssuranceValidationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    artifact_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    build_passed: bool
+    tests_passed: bool
+    security_evals_passed: bool
+    test_count: int = Field(ge=1, le=100000)
 
 
 class EnterpriseSecurityContainmentDecisionRequest(BaseModel):
@@ -1679,6 +1753,7 @@ def seed() -> None:
         session.commit()
         sync_change_proposals(session)
         ensure_security_twin_seed()
+        ensure_code_assurance_seed()
         if not session.get(ReleaseAssuranceRun, "assure_guardrail_demo"):
             session.add(
                 create_release_assurance_run(
@@ -2656,6 +2731,344 @@ def security_twin_evidence_pack(simulation_id: str) -> dict:
         }
 
 
+CODE_ASSURANCE_PROFILES = {
+    "guardrail-regression": {
+        "label": "Guardrail regression · adversarial fixture",
+        "findings": [
+            {
+                "rule_id": "RAI-AUTH-004",
+                "cwe": "CWE-862",
+                "severity": "critical",
+                "title": "Approval enforcement can be bypassed",
+                "location": "backend/app/services/tool_gateway.py:184",
+                "fingerprint": "auth-approval-bypass-184",
+                "state": "open",
+            },
+            {
+                "rule_id": "RAI-PATH-002",
+                "cwe": "CWE-22",
+                "severity": "high",
+                "title": "Connector path requires containment validation",
+                "location": "backend/app/services/obsidian_connector.py:91",
+                "fingerprint": "connector-path-boundary-91",
+                "state": "open",
+            },
+            {
+                "rule_id": "RAI-LOG-007",
+                "cwe": "CWE-532",
+                "severity": "medium",
+                "title": "Sensitive context may reach diagnostic logging",
+                "location": "backend/app/services/knowledge.py:227",
+                "fingerprint": "context-log-redaction-227",
+                "state": "open",
+            },
+        ],
+    },
+    "secure-baseline": {
+        "label": "Secure baseline · verification fixture",
+        "findings": [
+            {
+                "rule_id": "RAI-DEP-010",
+                "cwe": "CWE-1104",
+                "severity": "low",
+                "title": "Dependency provenance review is due",
+                "location": "frontend/package-lock.json:1",
+                "fingerprint": "dependency-provenance-review",
+                "state": "accepted_risk",
+            },
+        ],
+    },
+}
+
+
+def code_assurance_digest(item: CodeAssuranceRun) -> str:
+    payload = {
+        "run_id": item.id,
+        "tenant_id": item.tenant_id,
+        "repository_id": item.repository_id,
+        "commit_sha": item.commit_sha,
+        "scanner_profile": item.scanner_profile,
+        "findings": item.findings_json,
+        "sarif_summary": item.sarif_summary_json,
+        "attack_path": item.attack_path_json,
+        "remediation": item.remediation_json,
+        "validation": item.validation_json,
+        "policy_decision": item.policy_decision,
+        "status": item.status,
+    }
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def serialize_code_assurance_run(item: CodeAssuranceRun) -> dict:
+    return {
+        "id": item.id,
+        "tenant_id": item.tenant_id,
+        "repository_id": item.repository_id,
+        "commit_sha": item.commit_sha,
+        "scanner_profile": item.scanner_profile,
+        "scanner_profile_label": CODE_ASSURANCE_PROFILES[item.scanner_profile]["label"],
+        "status": item.status,
+        "policy_decision": item.policy_decision,
+        "initiated_by": item.initiated_by,
+        "findings": item.findings_json,
+        "sarif_summary": item.sarif_summary_json,
+        "attack_path": item.attack_path_json,
+        "remediation": item.remediation_json,
+        "validation": item.validation_json,
+        "evidence_digest": item.evidence_digest,
+        "created_at": item.created_at.isoformat(),
+        "updated_at": item.updated_at.isoformat(),
+        "repository_cloned": False,
+        "patch_applied": False,
+        "runtime_change_applied": False,
+    }
+
+
+def create_code_assurance_run(request: CodeAssuranceRunRequest, tenant_id: str = "demo") -> dict:
+    profile = CODE_ASSURANCE_PROFILES[request.scanner_profile]
+    findings = profile["findings"]
+    severity_counts = {
+        severity: sum(item["severity"] == severity for item in findings)
+        for severity in ("critical", "high", "medium", "low")
+    }
+    has_blocker = bool(severity_counts["critical"] or severity_counts["high"])
+    item = CodeAssuranceRun(
+        id=f"code_{uuid4().hex[:12]}",
+        tenant_id=tenant_id,
+        repository_id=request.repository_id,
+        commit_sha=request.commit_sha,
+        scanner_profile=request.scanner_profile,
+        status="awaiting_remediation_approval" if has_blocker else "evidence_imported",
+        policy_decision="approval_required",
+        initiated_by=request.initiated_by,
+        findings_json=findings,
+        sarif_summary_json={
+            "schema": "SARIF 2.1.0",
+            "import_mode": "bounded_fixture",
+            "results": len(findings),
+            "severity_counts": severity_counts,
+            "source_digest": hashlib.sha256(
+                json.dumps(findings, sort_keys=True, separators=(",", ":")).encode("utf-8")
+            ).hexdigest(),
+        },
+        attack_path_json={
+            "risk": "critical" if severity_counts["critical"] else "low",
+            "security_twin_scenario": "approval_bypass" if severity_counts["critical"] else "tool_scope_escalation",
+            "nodes": [
+                {"label": "Immutable commit", "state": "pinned"},
+                {"label": "SARIF finding", "state": "blocking" if has_blocker else "advisory"},
+                {"label": "Regulated tool", "state": "reachable" if has_blocker else "contained"},
+                {"label": "Customer records", "state": "modeled_only"},
+            ],
+            "statement": "Reachability is modeled from the imported finding class; no repository or live system was accessed.",
+        },
+        remediation_json={
+            "proposal": "Restore the approval gate, validate path containment, and extend secret-redaction regression coverage.",
+            "state": "awaiting_approval",
+            "decision": {},
+            "patch_applied": False,
+        },
+        validation_json={},
+        evidence_digest="",
+    )
+    item.evidence_digest = code_assurance_digest(item)
+    with SessionLocal() as session:
+        session.add(item)
+        session.commit()
+        audit(
+            session,
+            item.id,
+            request.initiated_by,
+            "code_assurance_evidence_imported",
+            item.policy_decision,
+            f"Imported bounded SARIF evidence for {item.repository_id} at immutable commit {item.commit_sha[:12]}.",
+            {
+                "tenant_id": tenant_id,
+                "scanner_profile": item.scanner_profile,
+                "findings": len(findings),
+                "repository_cloned": False,
+                "patch_applied": False,
+            },
+        )
+        return serialize_code_assurance_run(item)
+
+
+def ensure_code_assurance_seed() -> None:
+    with SessionLocal() as session:
+        if session.scalar(select(CodeAssuranceRun.id).limit(1)):
+            return
+    create_code_assurance_run(
+        CodeAssuranceRunRequest(
+            commit_sha="42e5494f6f8bd7f151f0a642b3b9537ee0a92811",
+            scanner_profile="guardrail-regression",
+            initiated_by="system.code-assurance-seed",
+        )
+    )
+
+
+def code_assurance_overview(run_id: str | None = None, tenant_id: str = "demo") -> dict:
+    with SessionLocal() as session:
+        items = session.scalars(
+            select(CodeAssuranceRun)
+            .where(CodeAssuranceRun.tenant_id == tenant_id)
+            .order_by(CodeAssuranceRun.created_at.desc())
+            .limit(20)
+        ).all()
+        selected = next((item for item in items if item.id == run_id), None) if run_id else None
+        selected = selected or (items[0] if items else None)
+        return {
+            "generated_at": now_iso(),
+            "operating_mode": {
+                "scanner": "external_adapter",
+                "repository_access": "none",
+                "remediation": "human_approval_required",
+                "validation": "imported_ci_evidence",
+                "statement": "The control plane imports bounded evidence. It cannot clone repositories, run a shell, apply patches, or deploy.",
+            },
+            "profiles": [
+                {"id": profile_id, "label": profile["label"]}
+                for profile_id, profile in CODE_ASSURANCE_PROFILES.items()
+            ],
+            "metrics": {
+                "runs": len(items),
+                "blocking": sum(
+                    any(finding["severity"] in {"critical", "high"} for finding in item.findings_json)
+                    and item.status != "validated"
+                    for item in items
+                ),
+                "awaiting_approval": sum(item.status == "awaiting_remediation_approval" for item in items),
+                "validated": sum(item.status == "validated" for item in items),
+            },
+            "runs": [serialize_code_assurance_run(item) for item in items],
+            "selected": serialize_code_assurance_run(selected) if selected else None,
+        }
+
+
+def decide_code_assurance_remediation(run_id: str, request: CodeAssuranceDecisionRequest) -> dict:
+    with SessionLocal() as session:
+        item = session.get(CodeAssuranceRun, run_id)
+        if not item:
+            raise HTTPException(status_code=404, detail="Code assurance run not found.")
+        if item.status not in {"awaiting_remediation_approval", "evidence_imported"}:
+            raise HTTPException(status_code=409, detail="Remediation decision is not available in the current state.")
+        if request.operator_id == item.initiated_by:
+            raise HTTPException(status_code=409, detail="Maker-checker separation requires a different remediation approver.")
+        item.remediation_json = {
+            **item.remediation_json,
+            "state": "approved_for_validation" if request.action == "approve" else "denied",
+            "decision": {
+                "action": request.action,
+                "operator_id": request.operator_id,
+                "comment": redact_pii(request.comment.strip()),
+                "decided_at": now_iso(),
+            },
+            "patch_applied": False,
+        }
+        item.status = "approved_for_validation" if request.action == "approve" else "denied"
+        item.policy_decision = "approval_required" if request.action == "approve" else "denied"
+        item.updated_at = datetime.now(UTC)
+        item.evidence_digest = code_assurance_digest(item)
+        session.commit()
+        audit(
+            session,
+            item.id,
+            request.operator_id,
+            "code_assurance_remediation_decided",
+            request.action,
+            "Recorded an independent remediation decision without applying code or changing runtime state.",
+            {"patch_applied": False, "runtime_change_applied": False},
+        )
+        return {"run": serialize_code_assurance_run(item), "runtime_change_applied": False}
+
+
+def validate_code_assurance_run(run_id: str, request: CodeAssuranceValidationRequest) -> dict:
+    with SessionLocal() as session:
+        item = session.get(CodeAssuranceRun, run_id)
+        if not item:
+            raise HTTPException(status_code=404, detail="Code assurance run not found.")
+        if item.status != "approved_for_validation":
+            raise HTTPException(status_code=409, detail="Approved remediation evidence is required before validation.")
+        passed = request.build_passed and request.tests_passed and request.security_evals_passed
+        item.validation_json = {
+            "state": "passed" if passed else "failed",
+            "artifact_digest": request.artifact_digest,
+            "build": "passed" if request.build_passed else "failed",
+            "tests": "passed" if request.tests_passed else "failed",
+            "security_evals": "passed" if request.security_evals_passed else "failed",
+            "test_count": request.test_count,
+            "submitted_by": request.operator_id,
+            "submitted_at": now_iso(),
+        }
+        item.status = "validated" if passed else "validation_failed"
+        item.policy_decision = "allowed" if passed else "denied"
+        item.updated_at = datetime.now(UTC)
+        item.evidence_digest = code_assurance_digest(item)
+        session.commit()
+        audit(
+            session,
+            item.id,
+            request.operator_id,
+            "code_assurance_validation_recorded",
+            item.policy_decision,
+            "Recorded external build, test, and security-evaluation evidence for the pinned commit.",
+            {"validation_passed": passed, "deployment_performed": False, "runtime_change_applied": False},
+        )
+        return {"run": serialize_code_assurance_run(item), "release_gate_eligible": passed}
+
+
+def code_assurance_evidence_pack(run_id: str, tenant_id: str = "demo") -> dict:
+    with SessionLocal() as session:
+        item = session.get(CodeAssuranceRun, run_id)
+        if not item or item.tenant_id != tenant_id:
+            raise HTTPException(status_code=404, detail="Code assurance run not found.")
+        payload = serialize_code_assurance_run(item)
+        return {
+            "schema_version": "code-assurance-evidence.v1",
+            "generated_at": now_iso(),
+            "run": payload,
+            "integrity": {
+                "algorithm": "sha256",
+                "digest": item.evidence_digest,
+                "covers": ["immutable commit", "SARIF findings", "attack path", "remediation decision", "validation evidence"],
+            },
+            "limitations": [
+                "This portfolio mode imports deterministic scanner fixtures; it does not execute a third-party scanner.",
+                "Repository checkout, patch application, CI execution, and deployment remain external responsibilities.",
+            ],
+        }
+
+
+@app.get("/api/code-assurance", tags=["Code Assurance"])
+def get_code_assurance(run_id: str | None = Query(default=None, max_length=48)) -> dict:
+    return code_assurance_overview(run_id)
+
+
+@app.post("/api/code-assurance/runs", tags=["Code Assurance"])
+def import_code_assurance_evidence(request: CodeAssuranceRunRequest) -> dict:
+    run = create_code_assurance_run(request)
+    return {"run": run, "overview": code_assurance_overview(run["id"])}
+
+
+@app.post("/api/code-assurance/runs/{run_id}/remediation-decision", tags=["Code Assurance"])
+def code_assurance_remediation_decision(run_id: str, request: CodeAssuranceDecisionRequest) -> dict:
+    return decide_code_assurance_remediation(run_id, request)
+
+
+@app.post("/api/code-assurance/runs/{run_id}/validation-evidence", tags=["Code Assurance"])
+def code_assurance_validation_evidence(run_id: str, request: CodeAssuranceValidationRequest) -> dict:
+    return validate_code_assurance_run(run_id, request)
+
+
+@app.get("/api/code-assurance/runs/{run_id}/evidence", tags=["Code Assurance"])
+def export_code_assurance_evidence(run_id: str) -> JSONResponse:
+    payload = code_assurance_evidence_pack(run_id)
+    response = JSONResponse(payload)
+    response.headers["Content-Disposition"] = f'attachment; filename="code-assurance-evidence-{run_id}.json"'
+    response.headers["X-Evidence-SHA256"] = payload["integrity"]["digest"]
+    return response
+
+
 RELEASE_ASSURANCE_BUNDLES = {
     "guardrail-v2": {
         "id": "guardrail-v2",
@@ -2677,11 +3090,107 @@ RELEASE_ASSURANCE_BUNDLES = {
         "rollback": "Reject the candidate and retain the current approval-required tool policy.",
         "owners": ["Customer Operations", "AI Governance"],
     },
+    "code-assurance-v1": {
+        "id": "code-assurance-v1",
+        "title": "Code assurance · immutable candidate evidence",
+        "baseline_version": POLICY_VERSION,
+        "candidate_version": "2026.07.25-code-assurance-v1",
+        "risk_tier": "high-impact",
+        "description": "Binds scanner findings, remediation approval, and CI evidence to one immutable commit.",
+        "rollback": "Reject the candidate commit and retain the previously attested release artifact.",
+        "owners": ["Application Security", "AI Governance", "Platform Engineering"],
+    },
 }
 
 
 def release_assurance_controls(bundle_id: str) -> tuple[list[dict], list[dict], dict]:
-    if bundle_id == "guardrail-v2":
+    if bundle_id == "code-assurance-v1":
+        with SessionLocal() as session:
+            latest = session.scalar(
+                select(CodeAssuranceRun)
+                .where(CodeAssuranceRun.tenant_id == "demo")
+                .order_by(CodeAssuranceRun.created_at.desc())
+                .limit(1)
+            )
+        validated = bool(latest and latest.status == "validated" and latest.policy_decision == "allowed")
+        evidence_ref = f"code-assurance:{latest.id}" if latest else "code-assurance:missing"
+        checks = [
+            {
+                "id": "CODE-SARIF-01",
+                "domain": "Static-analysis evidence",
+                "status": "passed" if latest else "failed",
+                "weight": 25,
+                "summary": "SARIF findings are bound to an immutable commit." if latest else "No code-assurance evidence is available.",
+                "evidence_ref": evidence_ref,
+                "blocking": True,
+            },
+            {
+                "id": "CODE-HITL-02",
+                "domain": "Remediation governance",
+                "status": "passed" if latest and latest.remediation_json.get("state") == "approved_for_validation" else "failed",
+                "weight": 25,
+                "summary": "An independent reviewer approved the remediation proposal." if latest and latest.remediation_json.get("state") == "approved_for_validation" else "Independent remediation approval is missing.",
+                "evidence_ref": evidence_ref,
+                "blocking": True,
+            },
+            {
+                "id": "CODE-CI-03",
+                "domain": "Build and regression evidence",
+                "status": "passed" if validated else "failed",
+                "weight": 30,
+                "summary": "Build, tests, and security evaluations passed for the pinned artifact." if validated else "Complete validation evidence is not available.",
+                "evidence_ref": evidence_ref,
+                "blocking": True,
+            },
+            {
+                "id": "CODE-BOUNDARY-04",
+                "domain": "Execution boundary",
+                "status": "passed",
+                "weight": 20,
+                "summary": "The governance plane did not clone, patch, execute, or deploy the repository.",
+                "evidence_ref": evidence_ref,
+                "blocking": True,
+            },
+        ]
+        diff = [
+            {
+                "component": "Candidate artifact",
+                "current": "Unverified repository head",
+                "candidate": latest.commit_sha[:12] if latest else "missing",
+                "impact": "bound" if latest else "unknown",
+                "risk": "low" if validated else "critical",
+            },
+            {
+                "component": "Remediation",
+                "current": "Scanner recommendation",
+                "candidate": "Maker-checker approved" if validated else "approval incomplete",
+                "impact": "governed" if validated else "blocked",
+                "risk": "low" if validated else "high",
+            },
+            {
+                "component": "CI evidence",
+                "current": "Not attached",
+                "candidate": "Build + tests + security evals" if validated else "incomplete",
+                "impact": "verified" if validated else "blocked",
+                "risk": "low" if validated else "critical",
+            },
+        ]
+        blast_radius = {
+            "summary": "Code findings are joined to the release gate without granting repository or deployment authority.",
+            "nodes": [
+                {"id": "commit", "label": "Pinned commit", "type": "candidate", "state": "bound" if latest else "missing"},
+                {"id": "sarif", "label": "SARIF evidence", "type": "control", "state": "covered" if latest else "failed"},
+                {"id": "approval", "label": "Remediation approval", "type": "control", "state": "covered" if validated else "blocked"},
+                {"id": "ci", "label": "CI validation", "type": "evidence", "state": "covered" if validated else "blocked"},
+                {"id": "release", "label": "External release", "type": "workflow", "state": "eligible" if validated else "not_reachable"},
+            ],
+            "edges": [["commit", "sarif"], ["sarif", "approval"], ["approval", "ci"], ["ci", "release"]],
+            "affected_runs": 1 if latest else 0,
+            "affected_controls": 4,
+            "regulated_workflows": 1,
+            "reachable_records": 0,
+        }
+    elif bundle_id == "guardrail-v2":
         checks = [
             {
                 "id": "POL-REPLAY-01",
@@ -4595,6 +5104,108 @@ def enterprise_change_proposal_decision(
             "execution_state": result["proposal"]["execution_state"],
         },
     )
+
+
+@app.get("/api/v1/code-assurance/runs", tags=["Enterprise Code Assurance"])
+def enterprise_code_assurance_runs(
+    run_id: str | None = Query(default=None, max_length=48),
+    principal: EnterprisePrincipal = Depends(require_role("viewer")),
+) -> dict:
+    ensure_enterprise_resource_tenant(principal)
+    return code_assurance_overview(run_id, principal.tenant_id)
+
+
+@app.post("/api/v1/code-assurance/runs", tags=["Enterprise Code Assurance"])
+def enterprise_import_code_assurance(
+    request: EnterpriseCodeAssuranceRunRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    principal: EnterprisePrincipal = Depends(require_role("operator")),
+) -> dict:
+    ensure_enterprise_resource_tenant(principal)
+    body = request.model_dump()
+    return idempotent_enterprise_mutation(
+        principal,
+        "/api/v1/code-assurance/runs",
+        idempotency_key,
+        body,
+        lambda: {
+            "run": create_code_assurance_run(
+                CodeAssuranceRunRequest(**body, initiated_by=principal.subject),
+                principal.tenant_id,
+            )
+        },
+        request.commit_sha,
+        "enterprise.code-assurance.evidence-imported",
+        lambda result: {
+            "run_id": result["run"]["id"],
+            "commit_sha": result["run"]["commit_sha"],
+            "policy_decision": result["run"]["policy_decision"],
+            "repository_cloned": False,
+        },
+    )
+
+
+@app.post("/api/v1/code-assurance/runs/{run_id}/remediation-decisions", tags=["Enterprise Code Assurance"])
+def enterprise_decide_code_assurance_remediation(
+    run_id: str,
+    request: EnterpriseCodeAssuranceDecisionRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    principal: EnterprisePrincipal = Depends(require_role("approver")),
+) -> dict:
+    ensure_enterprise_resource_tenant(principal)
+    with SessionLocal() as session:
+        item = session.get(CodeAssuranceRun, run_id)
+        if not item or item.tenant_id != principal.tenant_id:
+            raise HTTPException(status_code=404, detail="Code assurance run not found.")
+    body = request.model_dump()
+    return idempotent_enterprise_mutation(
+        principal,
+        f"/api/v1/code-assurance/runs/{run_id}/remediation-decisions",
+        idempotency_key,
+        body,
+        lambda: decide_code_assurance_remediation(
+            run_id,
+            CodeAssuranceDecisionRequest(**body, operator_id=principal.subject),
+        ),
+        run_id,
+        "enterprise.code-assurance.remediation-decided",
+    )
+
+
+@app.post("/api/v1/code-assurance/runs/{run_id}/validation-evidence", tags=["Enterprise Code Assurance"])
+def enterprise_validate_code_assurance(
+    run_id: str,
+    request: EnterpriseCodeAssuranceValidationRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    principal: EnterprisePrincipal = Depends(require_role("operator")),
+) -> dict:
+    ensure_enterprise_resource_tenant(principal)
+    with SessionLocal() as session:
+        item = session.get(CodeAssuranceRun, run_id)
+        if not item or item.tenant_id != principal.tenant_id:
+            raise HTTPException(status_code=404, detail="Code assurance run not found.")
+    body = request.model_dump()
+    return idempotent_enterprise_mutation(
+        principal,
+        f"/api/v1/code-assurance/runs/{run_id}/validation-evidence",
+        idempotency_key,
+        body,
+        lambda: validate_code_assurance_run(
+            run_id,
+            CodeAssuranceValidationRequest(**body, operator_id=principal.subject),
+        ),
+        run_id,
+        "enterprise.code-assurance.validation-recorded",
+    )
+
+
+@app.get("/api/v1/code-assurance/runs/{run_id}/evidence", tags=["Enterprise Code Assurance"])
+def enterprise_code_assurance_evidence(
+    run_id: str,
+    principal: EnterprisePrincipal = Depends(require_role("viewer")),
+) -> dict:
+    ensure_enterprise_resource_tenant(principal)
+    return code_assurance_evidence_pack(run_id, principal.tenant_id)
 
 
 @app.get("/api/v1/release-assurance", tags=["Enterprise Release Assurance"])

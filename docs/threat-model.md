@@ -15,6 +15,7 @@ This project models a regulated AI assistant that can answer from business docum
 - Obsidian vault paths, Markdown notes, persisted sync previews, connector file lineage, and knowledge-graph relations.
 - Change-proposal evidence, source fingerprints, operator rationale, release-handoff manifests, and rollback contracts.
 - Security Twin scenarios, calculated attack paths, modeled blast radius, containment decisions, verification replays, and evidence digests.
+- Code Assurance commit identities, normalized findings, remediation decisions, CI evidence, artifact digests, and release-gate eligibility.
 - Release candidates, certification results, blocking findings, GO / NO-GO decisions, reviewer identity, and integrity attestations.
 - OIDC claims, role/group mappings, assurance level, access decisions, payload-bound approvals, break-glass grants, and correlation IDs.
 - Durable integration deliveries, payload and response digests, retry state, and downstream signing material.
@@ -95,6 +96,7 @@ This project models a regulated AI assistant that can answer from business docum
 - Containment requires a persisted simulation, operator-prepared plan, separate approver decision, and replay verification.
 - Security Twin containment is sandbox-only and cannot mutate IAM, policies, credentials, connectors, tools, or business systems.
 - Release Assurance derives control results server-side, rejects approval while blocking findings exist, enforces maker-checker separation, and binds positive decisions to an HMAC-SHA256 attestation.
+- Code Assurance rejects arbitrary repositories, URLs, paths, commands, and unknown fields. The service has no clone, shell, patch, or deployment function; remediation is maker-checker controlled and validation fails closed.
 - The release attestation key is injected through runtime secret configuration, never returned by an API, and required in production before a GO decision can be signed.
 - Evidence export includes the attack path, control states, modeled blast radius, decision, verification, and SHA-256 integrity digest.
 - OIDC JWTs require a trusted asymmetric key, issuer, audience, expiry, issued-at, subject, tenant membership, and explicit role mapping; raw tokens are not persisted.
@@ -118,6 +120,7 @@ This project models a regulated AI assistant that can answer from business docum
 - Proposal confidence and expected risk reduction are decision-support estimates. A production release controller must independently validate source evidence, approvals, manifest integrity, canary gates, and rollback.
 - Security Twin inventory is scenario-modeled rather than discovered from live IAM and data catalogs. Production reachability requires authoritative identity, entitlement, connector, asset, and network integrations.
 - Release Assurance cannot identify dependencies absent from its configured graph. Production release gates must ingest authoritative build, policy, IAM, asset, evaluation, deployment, and rollback evidence.
+- Portfolio Code Assurance uses deterministic SARIF fixtures and therefore does not measure scanner precision or recall. Production ingestion requires authenticated CI workloads, signed bounded payloads, provenance verification, isolated scanner execution, and retention controls.
 - The included fixed-destination adapter demonstrates a real delivery contract but is not connected to an organization's case-management system by default. Production needs a managed worker, downstream reconciliation, and operational ownership.
 - Metrics are per-process and must be scraped across replicas; SLO targets are not proven until measured in the target environment.
 

@@ -988,6 +988,78 @@ curl -s -X POST http://127.0.0.1:8000/api/v1/release-assurance/runs/$ASSURANCE_R
 
 A minimum 32-character `RELEASE_ATTESTATION_KEY` and a non-empty `RELEASE_ATTESTATION_KEY_ID` are required to sign a production GO decision. The key is read only by the backend and never returned. Local development falls back to a process-ephemeral key and therefore does not provide durable cross-process verification.
 
+## Governed Code Assurance
+
+Import bounded scanner evidence for an immutable commit:
+
+```bash
+curl -sS -X POST http://localhost:8000/api/code-assurance/runs \
+  -H "Content-Type: application/json" \
+  -d '{
+    "repository_id": "regulated-ai-agent-platform",
+    "commit_sha": "42e5494f6f8bd7f151f0a642b3b9537ee0a92811",
+    "scanner_profile": "guardrail-regression",
+    "initiated_by": "code.operator"
+  }'
+```
+
+Representative response:
+
+```json
+{
+  "run": {
+    "id": "code_7c9f03124a6d",
+    "commit_sha": "42e5494f6f8bd7f151f0a642b3b9537ee0a92811",
+    "status": "awaiting_remediation_approval",
+    "policy_decision": "approval_required",
+    "sarif_summary": {
+      "schema": "SARIF 2.1.0",
+      "results": 3,
+      "severity_counts": {"critical": 1, "high": 1, "medium": 1, "low": 0}
+    },
+    "repository_cloned": false,
+    "patch_applied": false,
+    "runtime_change_applied": false
+  }
+}
+```
+
+Record the independent remediation decision:
+
+```bash
+curl -sS -X POST http://localhost:8000/api/code-assurance/runs/code_7c9f03124a6d/remediation-decision \
+  -H "Content-Type: application/json" \
+  -d '{
+    "action": "approve",
+    "operator_id": "security.approver",
+    "comment": "Independent review confirms the remediation scope and validation plan."
+  }'
+```
+
+Attach evidence produced by external CI:
+
+```bash
+curl -sS -X POST http://localhost:8000/api/code-assurance/runs/code_7c9f03124a6d/validation-evidence \
+  -H "Content-Type: application/json" \
+  -d '{
+    "operator_id": "release.operator",
+    "artifact_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "build_passed": true,
+    "tests_passed": true,
+    "security_evals_passed": true,
+    "test_count": 67
+  }'
+```
+
+The response reports `"release_gate_eligible": true` only when all three validation controls pass. Export the integrity-bound pack with:
+
+```bash
+curl -sS http://localhost:8000/api/code-assurance/runs/code_7c9f03124a6d/evidence \
+  -o code-assurance-evidence.json
+```
+
+The enterprise variants are under `/api/v1/code-assurance/runs`, require tenant-bound credentials, enforce role separation, and require an `Idempotency-Key` on mutations.
+
 ## Operational Probes and Metrics
 
 Kubernetes uses separate liveness and dependency-aware readiness routes:

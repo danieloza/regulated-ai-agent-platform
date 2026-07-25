@@ -6,6 +6,9 @@ This file records material platform changes for operators, reviewers, and integr
 
 ### Added
 
+- Governed Code Assurance control room with immutable commit binding, bounded SARIF normalization, Security Twin context, maker-checker remediation, external CI evidence, integrity export, and a `code-assurance-v1` Release Assurance gate.
+- Tenant-bound `/api/v1/code-assurance` resources with RBAC, idempotent mutations, strict payloads, actor attribution, and outbox events.
+- ADR 0013 and operator documentation for the scanner-adapter trust boundary.
 - Adversarial Release Assurance War Room with persisted certification runs, a server-calculated control matrix, baseline-to-candidate diff, modeled blast radius, hard blocking findings, maker-checker GO / NO-GO decisions, and HMAC-SHA256 integrity attestations.
 - Protected `/api/v1/release-assurance` resources with tenant enforcement, RBAC, idempotent certification and decision mutations, actor attribution, and outbox evidence.
 - Safe and intentionally unsafe candidate bundles for demonstrating that approval removal produces a non-overridable `NO-GO` with modeled customer-record exposure.
@@ -15,6 +18,8 @@ This file records material platform changes for operators, reviewers, and integr
 
 ### Security
 
+- Code-assurance input is constrained to an allowlisted repository identifier, full commit SHA, and fixed scanner profile; the API exposes no arbitrary URL, path, command, clone, patch, or deployment surface.
+- Remediation rejects self-approval, and release eligibility fails closed until build, tests, and security evaluations pass for an integrity-bound artifact.
 - Production attestation fails closed when `RELEASE_ATTESTATION_KEY` is absent; signing key material is never returned to the client.
 - Blocking control failures cannot be approved, and the initiating operator cannot approve the same certification run.
 - An attestation explicitly authorizes only an external pipeline and never performs a deployment or runtime mutation.
@@ -22,15 +27,16 @@ This file records material platform changes for operators, reviewers, and integr
 
 ### Operational impact
 
-- Production databases require migration `c9e7a4d51b20`.
+- Production databases require migration `a7d3f8c19e42`.
 - Deployments issuing attestations must inject and rotate `RELEASE_ATTESTATION_KEY` and publish a stable `RELEASE_ATTESTATION_KEY_ID`.
+- Production code-scanner integrations require workload authentication, signed SARIF, authoritative artifact provenance, and isolated scanner execution.
 
 ### Validation
 
-- Backend test suite: 63 tests passed, including local, enterprise, integrity, and fail-closed release-assurance contracts.
+- Backend test suite: 67 tests passed, including local, enterprise, integrity, fail-closed release assurance, and governed code-assurance contracts.
 - Frontend production build, zero-high-severity npm audit, and Docker Compose configuration validation completed successfully.
-- Alembic upgraded a fresh database to `c9e7a4d51b20 (head)` with no model/schema drift.
-- Browser validation covered safe GO, blocked NO-GO, maker-checker, attestation availability, and responsive layouts at 1440, 768, and 375 CSS pixels.
+- Alembic upgraded a fresh database to `a7d3f8c19e42 (head)` with no model/schema drift.
+- Browser validation covered code-evidence import, maker-checker remediation, CI evidence, release-gate eligibility, safe GO, blocked NO-GO, and responsive layouts at 1440, 768, and 375 CSS pixels.
 
 ## [0.1.0] - 2026-07-24
 

@@ -104,6 +104,7 @@ const sections = [
   ["Tool Gateway", "tool-gateway", Workflow],
   ["Policy Engine", "policy-engine", Gavel],
   ["Security Twin", "security-twin", Network],
+  ["Code Assurance", "code-assurance", Code2],
   ["Risk Intelligence", "risk-intelligence", Gauge],
   ["Change Proposal Inbox", "change-proposal-inbox", Inbox],
   ["Release Assurance", "release-assurance", PackageCheck],
@@ -183,6 +184,14 @@ const presentationStories = {
         title: "Replay policy before rollout",
         body: "Candidate policies are tested against historical runs and adversarial evaluations before they can change production behavior.",
         cue: "Emphasize regression risk: which safe requests would be blocked, and which unsafe requests might become allowed?",
+      },
+      {
+        target: "#code-assurance .code-assurance-hero",
+        section: "code-assurance",
+        eyebrow: "06 · GOVERN THE CANDIDATE",
+        title: "Bind code evidence to one immutable commit",
+        body: "Scanner findings become governed evidence: remediation needs independent approval, validation must include build, tests and security evals, and the control plane cannot patch or deploy.",
+        cue: "Follow the rail from commit SHA through SARIF, Security Twin context, maker-checker remediation and Release Assurance eligibility.",
       },
       {
         target: "#security-twin .security-twin-hero",
@@ -265,6 +274,14 @@ const presentationStories = {
         title: "Show the enterprise trust boundary",
         body: "Strict JWT validation, group-to-role mapping, tenant authorization, AAL2 step-up, maker-checker and digest-bound execution are enforced by FastAPI rather than the React client.",
         cue: "Use the trace rail to explain how one correlation ID joins identity, access policy, approval, delivery, downstream verification and audit evidence.",
+      },
+      {
+        target: "#code-assurance .code-assurance-hero",
+        section: "code-assurance",
+        eyebrow: "05 · APPLICATION SECURITY",
+        title: "Turn scanner output into release evidence",
+        body: "The adapter accepts only allowlisted repository profiles and immutable commit hashes, then joins SARIF findings to approval and external CI evidence.",
+        cue: "Stress the boundary: no arbitrary repository URL, shell, clone, automatic fix, or deployment authority exists in this service.",
       },
       {
         target: "#security-twin .security-twin-hero",
@@ -474,6 +491,11 @@ function App() {
   const [releaseBundleId, setReleaseBundleId] = useState("guardrail-v2");
   const [releaseDecisionComment, setReleaseDecisionComment] = useState("Independent review confirms the control evidence, blast radius, rollback contract, and residual risk.");
   const [releaseAssuranceBusy, setReleaseAssuranceBusy] = useState("");
+  const [codeAssurance, setCodeAssurance] = useState(null);
+  const [selectedCodeAssuranceRunId, setSelectedCodeAssuranceRunId] = useState("");
+  const [codeAssuranceProfile, setCodeAssuranceProfile] = useState("guardrail-regression");
+  const [codeAssuranceBusy, setCodeAssuranceBusy] = useState("");
+  const [codeAssuranceComment, setCodeAssuranceComment] = useState("Independent review confirms the remediation scope, ownership, and required validation evidence.");
   const [trust, setTrust] = useState(null);
   const [trustBusy, setTrustBusy] = useState("");
   const [trustFlowApprovalId, setTrustFlowApprovalId] = useState("");
@@ -607,6 +629,22 @@ function App() {
       if (payload.selected) {
         setSelectedReleaseRunId(payload.selected.id);
         setReleaseBundleId(payload.selected.bundle_id);
+      }
+    } catch (error) {
+      setErrorMessage(error.message);
+    }
+  }
+
+  async function loadCodeAssurance(runId = "") {
+    try {
+      const suffix = runId ? `?run_id=${encodeURIComponent(runId)}` : "";
+      const response = await fetch(`${API}/api/code-assurance${suffix}`);
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload?.detail ?? `Code assurance request failed: ${response.status}`);
+      setCodeAssurance(payload);
+      if (payload.selected) {
+        setSelectedCodeAssuranceRunId(payload.selected.id);
+        setCodeAssuranceProfile(payload.selected.scanner_profile);
       }
     } catch (error) {
       setErrorMessage(error.message);
@@ -1278,6 +1316,7 @@ function App() {
     loadGovernance();
     loadChangeProposals();
     loadReleaseAssurance();
+    loadCodeAssurance();
     loadTrust();
     loadSecurityTwin();
     loadLifecycle();
@@ -1499,6 +1538,106 @@ function App() {
     }
   }
 
+  async function importCodeAssuranceEvidence() {
+    setCodeAssuranceBusy("import");
+    setErrorMessage("");
+    try {
+      const commitSha = "42e5494f6f8bd7f151f0a642b3b9537ee0a92811";
+      const response = await fetch(`${API}/api/code-assurance/runs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          repository_id: "regulated-ai-agent-platform",
+          commit_sha: commitSha,
+          scanner_profile: codeAssuranceProfile,
+          initiated_by: "code.operator",
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload?.detail ?? `Code assurance import failed: ${response.status}`);
+      setCodeAssurance(payload.overview);
+      setSelectedCodeAssuranceRunId(payload.run.id);
+      setStatusMessage(`SARIF evidence bound to ${payload.run.commit_sha.slice(0, 12)}; repository access and patch application remained disabled.`);
+    } catch (error) {
+      setErrorMessage(error.message);
+    } finally {
+      setCodeAssuranceBusy("");
+    }
+  }
+
+  async function decideCodeAssurance(action) {
+    if (!selectedCodeAssuranceRunId) return;
+    setCodeAssuranceBusy(action);
+    setErrorMessage("");
+    try {
+      const response = await fetch(`${API}/api/code-assurance/runs/${selectedCodeAssuranceRunId}/remediation-decision`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, operator_id: "security.approver", comment: codeAssuranceComment }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload?.detail ?? `Remediation decision failed: ${response.status}`);
+      await loadCodeAssurance(selectedCodeAssuranceRunId);
+      setStatusMessage(action === "approve" ? "Remediation approved for external implementation and validation; no patch was applied." : "Remediation denied and evidence retained.");
+    } catch (error) {
+      setErrorMessage(error.message);
+    } finally {
+      setCodeAssuranceBusy("");
+    }
+  }
+
+  async function attachCodeAssuranceValidation() {
+    if (!selectedCodeAssuranceRunId) return;
+    setCodeAssuranceBusy("validate");
+    setErrorMessage("");
+    try {
+      const response = await fetch(`${API}/api/code-assurance/runs/${selectedCodeAssuranceRunId}/validation-evidence`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          operator_id: "release.operator",
+          artifact_digest: "b".repeat(64),
+          build_passed: true,
+          tests_passed: true,
+          security_evals_passed: true,
+          test_count: 67,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload?.detail ?? `Validation evidence failed: ${response.status}`);
+      await loadCodeAssurance(selectedCodeAssuranceRunId);
+      await loadReleaseAssurance();
+      setStatusMessage("Build, tests, and security-eval evidence verified. The pinned candidate is eligible for Release Assurance.");
+    } catch (error) {
+      setErrorMessage(error.message);
+    } finally {
+      setCodeAssuranceBusy("");
+    }
+  }
+
+  async function downloadCodeAssuranceEvidence() {
+    if (!selectedCodeAssuranceRunId) return;
+    setCodeAssuranceBusy("evidence");
+    try {
+      const response = await fetch(`${API}/api/code-assurance/runs/${selectedCodeAssuranceRunId}/evidence`);
+      if (!response.ok) throw new Error(`Code assurance evidence export failed: ${response.status}`);
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `code-assurance-evidence-${selectedCodeAssuranceRunId}.json`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      setStatusMessage("Code assurance evidence pack exported with SHA-256 integrity metadata.");
+    } catch (error) {
+      setErrorMessage(error.message);
+    } finally {
+      setCodeAssuranceBusy("");
+    }
+  }
+
   async function decideReleaseAssurance(action) {
     if (!selectedReleaseRunId) return;
     setReleaseAssuranceBusy(action);
@@ -1705,6 +1844,13 @@ function App() {
       ?? releaseAssurance?.runs?.[0]
       ?? null,
     [releaseAssurance, selectedReleaseRunId],
+  );
+  const selectedCodeAssuranceRun = useMemo(
+    () => (codeAssurance?.runs ?? []).find((item) => item.id === selectedCodeAssuranceRunId)
+      ?? codeAssurance?.selected
+      ?? codeAssurance?.runs?.[0]
+      ?? null,
+    [codeAssurance, selectedCodeAssuranceRunId],
   );
   const currentTrustApproval = useMemo(
     () => (trust?.approvals ?? []).find((item) => item.id === trustFlowApprovalId)
@@ -3136,6 +3282,146 @@ function App() {
                 <div className="proposal-detail proposal-empty"><Inbox size={22} /><strong>Select a proposal to inspect its evidence.</strong></div>
               )}
             </div>
+          </section>
+
+          <section className="panel code-assurance-panel" id="code-assurance">
+            <div className="code-assurance-hero">
+              <div>
+                <span className="code-assurance-kicker"><Code2 size={15} /> GOVERNED CODE ASSURANCE</span>
+                <h2>From commit SHA to defensible release evidence</h2>
+                <p>Normalize scanner output, govern remediation, and prove the candidate without giving an agent repository or deployment authority.</p>
+              </div>
+              <div className="code-assurance-actions">
+                <label htmlFor="code-assurance-profile">Evidence profile</label>
+                <div>
+                  <select id="code-assurance-profile" value={codeAssuranceProfile} onChange={(event) => setCodeAssuranceProfile(event.target.value)} disabled={Boolean(codeAssuranceBusy)}>
+                    {(codeAssurance?.profiles ?? []).map((profile) => <option value={profile.id} key={profile.id}>{profile.label}</option>)}
+                  </select>
+                  <button type="button" onClick={importCodeAssuranceEvidence} disabled={Boolean(codeAssuranceBusy)}>
+                    <Radar size={16} />{codeAssuranceBusy === "import" ? "Importing..." : "Import scanner evidence"}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="code-assurance-boundary" role="note">
+              <LockKeyhole size={18} />
+              <div>
+                <strong>Evidence adapter, not an autonomous code writer</strong>
+                <p>{codeAssurance?.operating_mode?.statement ?? "No repository clone, shell, patch application, or deployment occurs in this control plane."}</p>
+              </div>
+              <span>AUTHORITY: ZERO</span>
+            </div>
+
+            <div className="code-assurance-metrics">
+              <Metric label="Evidence runs" value={codeAssurance?.metrics?.runs ?? 0} />
+              <Metric label="Blocking" value={codeAssurance?.metrics?.blocking ?? 0} tone={(codeAssurance?.metrics?.blocking ?? 0) ? "red" : "default"} />
+              <Metric label="Awaiting approval" value={codeAssurance?.metrics?.awaiting_approval ?? 0} tone="amber" />
+              <Metric label="Validated" value={codeAssurance?.metrics?.validated ?? 0} />
+            </div>
+
+            {selectedCodeAssuranceRun ? (
+              <>
+                <div className="code-assurance-rail" aria-label="Code assurance evidence flow">
+                  {[
+                    ["01", "Pinned commit", selectedCodeAssuranceRun.commit_sha.slice(0, 12), "complete"],
+                    ["02", "SARIF normalized", `${selectedCodeAssuranceRun.sarif_summary.results} findings`, "complete"],
+                    ["03", "Attack path", selectedCodeAssuranceRun.attack_path.risk, selectedCodeAssuranceRun.attack_path.risk],
+                    ["04", "Remediation", selectedCodeAssuranceRun.remediation.state.replaceAll("_", " "), selectedCodeAssuranceRun.remediation.state],
+                    ["05", "Validation", selectedCodeAssuranceRun.validation.state ?? "not attached", selectedCodeAssuranceRun.validation.state ?? "pending"],
+                    ["06", "Release gate", selectedCodeAssuranceRun.status === "validated" ? "eligible" : "blocked", selectedCodeAssuranceRun.status === "validated" ? "complete" : "blocked"],
+                  ].map((step, index) => (
+                    <React.Fragment key={step[0]}>
+                      <div className={`code-assurance-step ${step[3]}`}>
+                        <span>{step[0]}</span><strong>{step[1]}</strong><small>{step[2]}</small>
+                      </div>
+                      {index < 5 && <ArrowRight className="code-assurance-arrow" size={15} />}
+                    </React.Fragment>
+                  ))}
+                </div>
+
+                <div className="code-assurance-workspace">
+                  <div className="code-findings-card">
+                    <div className="code-assurance-heading">
+                      <div><ShieldAlert size={16} /><strong>Normalized SARIF findings</strong></div>
+                      <code>sha256:{selectedCodeAssuranceRun.sarif_summary.source_digest.slice(0, 14)}…</code>
+                    </div>
+                    <div className="code-findings-list">
+                      {selectedCodeAssuranceRun.findings.map((finding) => (
+                        <article className={`code-finding ${finding.severity}`} key={finding.fingerprint}>
+                          <span className="code-finding-severity">{finding.severity}</span>
+                          <div><strong>{finding.title}</strong><p>{finding.rule_id} · {finding.cwe}</p><code>{finding.location}</code></div>
+                          <span>{finding.state.replaceAll("_", " ")}</span>
+                        </article>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="code-attack-card">
+                    <div className="code-assurance-heading">
+                      <div><Network size={16} /><strong>Security Twin context</strong></div>
+                      <span>{selectedCodeAssuranceRun.attack_path.security_twin_scenario.replaceAll("_", " ")}</span>
+                    </div>
+                    <div className="code-attack-path">
+                      {selectedCodeAssuranceRun.attack_path.nodes.map((node, index) => (
+                        <React.Fragment key={node.label}>
+                          <div className={`code-attack-node ${node.state}`}><small>{node.state}</small><strong>{node.label}</strong></div>
+                          {index < selectedCodeAssuranceRun.attack_path.nodes.length - 1 && <ArrowRight size={15} />}
+                        </React.Fragment>
+                      ))}
+                    </div>
+                    <p>{selectedCodeAssuranceRun.attack_path.statement}</p>
+                    <button type="button" onClick={() => goToSection("security-twin")}><Network size={15} />Open Security Twin</button>
+                  </div>
+                </div>
+
+                <div className="code-assurance-lower">
+                  <div className="code-remediation-card">
+                    <div className="code-assurance-heading">
+                      <div><Gavel size={16} /><strong>Remediation decision</strong></div>
+                      <span>maker-checker</span>
+                    </div>
+                    <p>{selectedCodeAssuranceRun.remediation.proposal}</p>
+                    <label>
+                      <span>Independent reviewer rationale</span>
+                      <textarea rows="3" value={codeAssuranceComment} onChange={(event) => setCodeAssuranceComment(event.target.value)} disabled={!["awaiting_remediation_approval", "evidence_imported"].includes(selectedCodeAssuranceRun.status)} />
+                    </label>
+                    {["awaiting_remediation_approval", "evidence_imported"].includes(selectedCodeAssuranceRun.status) ? (
+                      <div><button type="button" disabled={Boolean(codeAssuranceBusy)} onClick={() => decideCodeAssurance("deny")}><OctagonX size={15} />Deny</button><button className="primary" type="button" disabled={Boolean(codeAssuranceBusy)} onClick={() => decideCodeAssurance("approve")}><UserCheck size={15} />Approve for validation</button></div>
+                    ) : (
+                      <div className="code-terminal"><CheckCircle2 size={17} /><strong>{selectedCodeAssuranceRun.remediation.state.replaceAll("_", " ")}</strong><span>patch applied: no</span></div>
+                    )}
+                  </div>
+
+                  <div className="code-validation-card">
+                    <div className="code-assurance-heading">
+                      <div><PackageCheck size={16} /><strong>Validation evidence</strong></div>
+                      <span>external CI</span>
+                    </div>
+                    <div className="code-validation-grid">
+                      {[
+                        ["Build", selectedCodeAssuranceRun.validation.build],
+                        ["Backend tests", selectedCodeAssuranceRun.validation.tests],
+                        ["Security evals", selectedCodeAssuranceRun.validation.security_evals],
+                        ["Artifact digest", selectedCodeAssuranceRun.validation.artifact_digest ? "bound" : undefined],
+                      ].map(([label, state]) => <div className={state ?? "pending"} key={label}><span>{label}</span><strong>{state ?? "pending"}</strong></div>)}
+                    </div>
+                    <button className="primary" type="button" disabled={selectedCodeAssuranceRun.status !== "approved_for_validation" || Boolean(codeAssuranceBusy)} onClick={attachCodeAssuranceValidation}><CheckCircle2 size={15} />Attach passing CI evidence</button>
+                    <button type="button" disabled={selectedCodeAssuranceRun.status !== "validated"} onClick={() => { setReleaseBundleId("code-assurance-v1"); goToSection("release-assurance"); }}><PackageCheck size={15} />Open Release Assurance</button>
+                  </div>
+
+                  <aside className="code-evidence-card">
+                    <Fingerprint size={21} />
+                    <span>EVIDENCE DIGEST</span>
+                    <code>{selectedCodeAssuranceRun.evidence_digest}</code>
+                    <p>Commit, findings, path, approval and validation state are integrity-bound.</p>
+                    <button type="button" disabled={Boolean(codeAssuranceBusy)} onClick={downloadCodeAssuranceEvidence}><Download size={15} />Export evidence pack</button>
+                  </aside>
+                </div>
+              </>
+            ) : (
+              <div className="code-assurance-empty"><Code2 size={22} /><div><strong>No code evidence imported</strong><p>Import the bounded portfolio fixture to start a governed assurance run.</p></div></div>
+            )}
           </section>
 
           <section className="panel release-assurance-panel" id="release-assurance">

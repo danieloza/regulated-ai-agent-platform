@@ -32,6 +32,7 @@ The goal is to demonstrate the engineering layer around AI agents: RAG, governan
 - Secure Context Vault with encrypted supplemental context, short-lived step-up access, scope and TTL controls, single-run consumption, secret/injection scans, and metadata-only audit evidence.
 - Prompt-injection lab with runnable attack scenarios and expected policy outcomes.
 - Agent Security Twin with deterministic attack-path reconstruction, modeled blast-radius diff, approval-gated sandbox containment, verification replay, and integrity-digested evidence export.
+- Governed Code Assurance that binds normalized SARIF findings to an immutable commit, requires independent remediation approval, records external CI evidence, and feeds a fail-closed release gate without repository or deployment authority.
 - Adversarial Release Assurance War Room that joins policy replay, security evals, attack-path simulation, approval integrity, control diff, and blast radius into a persisted GO / NO-GO gate with maker-checker attestation.
 - Agent tool gateway where the agent has no shell, secrets, or direct database credentials.
 - Policy engine decisions: `allowed`, `denied`, and `approval_required`.
@@ -171,12 +172,13 @@ Use this flow when presenting the project in an interview:
 10. Unlock `Secure Context Vault`, attach confidential context to one run, and show that the audit records only its metadata and integrity digest.
 11. Go to `Prompt Injection Lab`, run an instruction-override attack, and inspect the denied run with risk factors and audit evidence.
 12. Open `Security Twin`. Compare the current tool-scope boundary with an overprivileged candidate, inspect the `0 -> 18` modeled blast-radius diff, approve a sandbox containment plan, and replay it until the path is proven broken.
-13. Use `Tool Gateway` to compare an allowed read with a regulated write that becomes `approval_required`.
-14. Open `Change Proposal Inbox`. Detect proposals, inspect the evidence and component diff, then show that `Accept for release` creates a controlled handoff without applying a runtime change.
-15. Open `Release Assurance`. Run `Guardrail v2`, inspect the joined certification matrix and zero-record attack path, approve it as a different operator, and export the non-deploying integrity attestation.
-16. Re-run with `Operations fast path` and show the hard `NO-GO`: removing approval exposes a modeled path to 1,042 customer records and the approve action is unavailable.
-17. Show `/api/v1` OIDC/workload authentication, tenant context, RBAC, idempotency replay, durable delivery, and the generated integration outbox event.
-18. Go to `Ledger Demo` and compare unsafe read-modify-write with the atomic SQL update:
+13. Open `Code Assurance`. Import the bounded SARIF profile, inspect the immutable commit and modeled attack path, approve remediation as a separate reviewer, attach passing CI evidence, and hand the candidate to Release Assurance.
+14. Use `Tool Gateway` to compare an allowed read with a regulated write that becomes `approval_required`.
+15. Open `Change Proposal Inbox`. Detect proposals, inspect the evidence and component diff, then show that `Accept for release` creates a controlled handoff without applying a runtime change.
+16. Open `Release Assurance`. Run `Guardrail v2`, inspect the joined certification matrix and zero-record attack path, approve it as a different operator, and export the non-deploying integrity attestation.
+17. Re-run with `Operations fast path` and show the hard `NO-GO`: removing approval exposes a modeled path to 1,042 customer records and the approve action is unavailable.
+18. Show `/api/v1` OIDC/workload authentication, tenant context, RBAC, idempotency replay, durable delivery, and the generated integration outbox event.
+19. Go to `Ledger Demo` and compare unsafe read-modify-write with the atomic SQL update:
 
 ```sql
 UPDATE accounts
@@ -243,13 +245,13 @@ https://github.com/user-attachments/assets/90b56729-f937-4c41-9cef-b250e1522eda
 
 [Open the full-resolution video in the browser](https://danieloza.github.io/regulated-ai-agent-platform/media/regulated-ai-workflow-explainer.mp4)
 
-The embedded 59-second, watermark-free workflow animation has English voice-over and follows one request through source-bound evidence, policy decisions, scoped tools, human approval, Policy Replay, Security Twin analysis, and adversarial release assurance. The final `GO` remains authorization evidence; it does not trigger deployment.
+The embedded 59-second, watermark-free workflow animation has English voice-over and follows one request through source-bound evidence, policy decisions, scoped tools, human approval, Policy Replay, Security Twin analysis, and adversarial release assurance. Governed Code Assurance extends the same evidence-before-authority boundary to code changes; the current film remains accurate, while the detailed commit-to-release flow is shown in the product demo and screenshot below. The final `GO` remains authorization evidence; it does not trigger deployment.
 
 ### Guided Operator Tour
 
 ![Regulated AI Agent Platform demo](docs/demo.gif)
 
-The guided client and HR stories include the Enterprise Identity & Trust Plane and the Release Assurance War Room. They continue from source-bound RAG through adversarial testing, modeled attack paths, governed change synthesis, joined release certification, independent approval, and integrity evidence without granting the agent runtime or deployment authority.
+The guided client and HR stories include the Enterprise Identity & Trust Plane, Governed Code Assurance, and the Release Assurance War Room. They continue from source-bound RAG through adversarial testing, modeled attack paths, immutable code evidence, governed change synthesis, joined release certification, independent approval, and integrity evidence without granting the agent runtime or deployment authority.
 
 ## Screenshots
 
@@ -280,6 +282,10 @@ The guided client and HR stories include the Enterprise Identity & Trust Plane a
 ### Agent Security Twin
 
 ![Agent Security Twin](docs/screenshots/07-agent-security-twin.png)
+
+### Governed Code Assurance
+
+![Governed Code Assurance](docs/screenshots/11-governed-code-assurance.png)
 
 ### Enterprise Identity & Trust Plane
 
@@ -315,6 +321,7 @@ flowchart LR
   Trust --> Delivery["Durable Integration Delivery"]
   Delivery --> CaseSystem["Fixed Case-management Adapter"]
   API --> Twin["Agent Security Twin"]
+  API --> Code["Governed Code Assurance"]
   API --> Proposals["Governed Change Proposal Inbox"]
   API --> Assurance["Adversarial Release Assurance"]
   API --> Audit["Audit Trail"]
@@ -334,6 +341,9 @@ flowchart LR
   Context --> DB
   Proposals --> DB
   Twin --> DB
+  Code --> DB
+  Code --> Twin
+  Code --> Assurance
   Knowledge --> RAG
   Outbox --> DB
   Policy --> Evals["Security Evals"]
@@ -385,6 +395,7 @@ kubectl -n regulated-ai get pods,svc,hpa
 - Architecture decisions: [docs/adr](docs/adr)
 - Governed change proposals: [ADR 0008](docs/adr/0008-governed-change-proposal-inbox.md)
 - Agent Security Twin: [ADR 0009](docs/adr/0009-agent-security-twin.md)
+- Governed Code Assurance: [ADR 0013](docs/adr/0013-governed-code-assurance.md) · [control flow](docs/code-assurance.md)
 - Adversarial release assurance: [ADR 0012](docs/adr/0012-adversarial-release-assurance.md)
 - Enterprise Identity and Trust Plane: [ADR 0010](docs/adr/0010-enterprise-identity-and-trust-plane.md)
 - Durable approved delivery: [ADR 0011](docs/adr/0011-durable-approved-delivery.md)

@@ -126,6 +126,17 @@ Use this checklist when moving from a local evaluation to a shared or deployed e
 - [ ] Confirm sandbox containment cannot call shell commands, construct arbitrary destinations, receive infrastructure credentials, or mutate runtime controls.
 - [ ] Verify every containment records an owner, rationale, plan digest, decision, before/after path, and evidence digest.
 - [ ] Send Security Twin outbox events to the approved SIEM, workflow, or SOAR integration with retry and dead-letter handling.
+
+## Governed Code Assurance
+
+- [ ] Apply migration `a7d3f8c19e42` before enabling the code-assurance API.
+- [ ] Keep repository identifiers and scanner profiles server-controlled; never accept caller-supplied clone URLs, paths, commands, or credentials.
+- [ ] Run scanners in an isolated CI worker with no production data access and bounded network egress.
+- [ ] Authenticate the CI workload and verify signed SARIF, full commit SHA, artifact digest, schema, size limit, and tenant before ingestion.
+- [ ] Map `operator`, `approver`, and release roles through corporate IAM; verify maker-checker separation.
+- [ ] Confirm failed or incomplete validation evidence remains release-blocking.
+- [ ] Route code-assurance outbox events to the approved SIEM and change-management integration.
+- [ ] Test evidence retention, tenant deletion, backup, and restore for scanner findings and approvals.
 - [ ] Reconcile production inventory from IAM, CMDB, data catalog, connector registry, and network policy before using blast-radius results operationally.
 - [ ] Require an external release workflow to revalidate separation of duties, scope, rollback, maintenance window, and post-change verification.
 
