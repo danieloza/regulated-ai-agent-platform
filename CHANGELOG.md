@@ -6,6 +6,11 @@ This file records material platform changes for operators, reviewers, and integr
 
 ### Added
 
+- Contextual Focus Mode for the Interactive Governance Atlas, with camera centering, surrounding-context dimming, readable active-control evidence, explicit return to overview, and automatic step focus for Guided Story and Change Impact.
+- Fullscreen Atlas presentation mode with keyboard navigation, focus return, responsive single-column fallback, and reduced-motion-safe behavior.
+- Interactive Governance Atlas modes for controlled 2.5D exploration, five evidence-bound control stories, portfolio explanations, direct module navigation, and modeled approval-bypass blast-radius replay ending in a fail-closed `NO-GO`.
+- Offline Architecture Intelligence in Knowledge Control Center, with a Graphify-derived system topology, searchable symbol drill-down, source evidence, confidence semantics, layer filters, accessible relationship data, and guided client and engineering presentation steps.
+- Reproducible architecture-dataset compilation from an external Graphify node-link artifact into a sanitized, integrity-digested React asset.
 - Governed Code Assurance control room with immutable commit binding, bounded SARIF normalization, Security Twin context, maker-checker remediation, external CI evidence, integrity export, and a `code-assurance-v1` Release Assurance gate.
 - Tenant-bound `/api/v1/code-assurance` resources with RBAC, idempotent mutations, strict payloads, actor attribution, and outbox events.
 - ADR 0013 and operator documentation for the scanner-adapter trust boundary.
@@ -16,8 +21,17 @@ This file records material platform changes for operators, reviewers, and integr
 - A 59-second, watermark-free workflow explainer with offline English narration and a full-resolution README poster; reproducible production sources are isolated on the dedicated `media-production` branch.
 - Native inline workflow video playback in the GitHub README, with the repository's free GitHub Pages endpoint retained as a full-resolution fallback.
 
+### Changed
+
+- Updated the guided client and HR presentation steps, README demo path, public Atlas screenshot, and animated demo to present the approval-boundary regression through the new contextual focus surface.
+- Upgraded the architecture presentation step and public screenshot to demonstrate animated governance flows and release-impact reasoning while keeping the code-symbol evidence view available for engineering review.
+- Reorganized the operator sidebar into compact, accessible control groups, bounded the Citations inventory behind an expandable evidence preview, and made guided-presentation panels collision-aware with a manual repositioning fallback.
+
 ### Security
 
+- Focus and presentation behavior remain local React, SVG, and CSS state; the patch adds no remote renderer, analytics surface, repository authority, or runtime mutation.
+- Atlas motion is implemented with the existing React, SVG and CSS surface; it adds no WebGL engine, remote animation package, runtime repository access or LLM dependency, and the candidate-impact story is explicitly modeled and non-mutating.
+- Architecture evidence is rendered without remote JavaScript, runtime repository access, Graphify hooks, semantic extraction or LLM calls; absolute paths and control characters are removed before the generated dataset enters the frontend bundle.
 - Code-assurance input is constrained to an allowlisted repository identifier, full commit SHA, and fixed scanner profile; the API exposes no arbitrary URL, path, command, clone, patch, or deployment surface.
 - Remediation rejects self-approval, and release eligibility fails closed until build, tests, and security evaluations pass for an integrity-bound artifact.
 - Production attestation fails closed when `RELEASE_ATTESTATION_KEY` is absent; signing key material is never returned to the client.
@@ -27,12 +41,16 @@ This file records material platform changes for operators, reviewers, and integr
 
 ### Operational impact
 
+- Graphify remains an external development-time analyzer rather than an application dependency; operators regenerate the committed architecture dataset explicitly when architectural evidence needs to be refreshed.
 - Production databases require migration `a7d3f8c19e42`.
 - Deployments issuing attestations must inject and rotate `RELEASE_ATTESTATION_KEY` and publish a stable `RELEASE_ATTESTATION_KEY_ID`.
 - Production code-scanner integrations require workload authentication, signed SARIF, authoritative artifact provenance, and isolated scanner execution.
 
 ### Validation
 
+- Browser validation covered click-to-focus, automatic Guided Story and Change Impact camera transitions, `Back to full map`, fullscreen entry and `Escape` focus return, plus responsive presentation layouts at 1440 and 390 CSS pixels.
+- Browser validation covered atlas exploration, governed-story playback, approval-bypass impact replay through blocking `NO-GO`, deep-link navigation to Release Assurance, symbol drill-down, and responsive layout at 1440 and 390 CSS pixels.
+- Architecture generation produced an identical artifact on repeated runs, passed the local-path leakage scan, and was exercised in the browser across system-map, symbol-search, source-inspection, desktop, and 390-pixel responsive states.
 - Backend test suite: 67 tests passed, including local, enterprise, integrity, fail-closed release assurance, and governed code-assurance contracts.
 - Frontend production build, zero-high-severity npm audit, and Docker Compose configuration validation completed successfully.
 - Alembic upgraded a fresh database to `a7d3f8c19e42 (head)` with no model/schema drift.

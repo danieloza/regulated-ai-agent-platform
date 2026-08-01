@@ -56,7 +56,7 @@ button:focus-visible {
 
 .app-shell {
   display: grid;
-  grid-template-columns: 280px 1fr;
+  grid-template-columns: 244px minmax(0, 1fr);
   min-height: 100vh;
   background: #f6f8f9;
 }
@@ -64,24 +64,27 @@ button:focus-visible {
 .sidebar {
   border-right: 1px solid #d9e0e4;
   background: #ffffff;
-  padding: 24px 18px;
+  padding: 16px 12px;
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 12px;
   position: sticky;
   top: 0;
   height: 100vh;
+  overflow: hidden;
 }
 
 .brand {
   display: flex;
-  gap: 12px;
+  gap: 10px;
   align-items: center;
+  min-height: 42px;
+  padding: 0 5px;
 }
 
 .brand-mark {
-  width: 42px;
-  height: 42px;
+  width: 36px;
+  height: 36px;
   display: grid;
   place-items: center;
   background: #0f766e;
@@ -95,53 +98,163 @@ button:focus-visible {
 }
 
 .brand strong {
-  font-size: 15px;
+  font-size: 13px;
   letter-spacing: 0;
 }
 
 .brand span {
   color: #64748b;
-  font-size: 13px;
+  font-size: 11px;
   margin-top: 2px;
 }
 
 .nav {
-  display: grid;
-  gap: 4px;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 5px;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 3px;
+  scrollbar-color: #cbd5e1 transparent;
+  scrollbar-width: thin;
 }
 
-.nav button {
-  height: 40px;
-  display: flex;
+.nav-summary {
   align-items: center;
-  gap: 10px;
+  color: #64748b;
+  display: flex;
+  font-size: 9px;
+  font-weight: 800;
+  justify-content: space-between;
+  letter-spacing: .09em;
+  padding: 3px 8px 5px;
+  text-transform: uppercase;
+}
+
+.nav-summary strong {
+  align-items: center;
+  background: #eef2f4;
+  border-radius: 999px;
   color: #475569;
+  display: inline-flex;
+  font-size: 9px;
+  height: 20px;
+  justify-content: center;
+  letter-spacing: 0;
+  min-width: 24px;
+}
+
+.nav-group {
+  border: 1px solid transparent;
+  border-radius: 8px;
+}
+
+.nav-group.open {
+  background: #f8fafb;
+  border-color: #e5e9ec;
+  padding-bottom: 4px;
+}
+
+.nav-group-toggle {
+  align-items: center;
   background: transparent;
   border-radius: 7px;
-  padding: 0 12px;
-  font-size: 13px;
+  color: #475569;
+  display: grid;
+  font-size: 10px;
+  font-weight: 800;
+  grid-template-columns: 1fr auto auto;
+  height: 30px;
+  letter-spacing: .055em;
+  padding: 0 8px;
   text-align: left;
+  text-transform: uppercase;
+  width: 100%;
 }
 
-.nav button.active,
-.nav button:hover {
+.nav-group-toggle:hover,
+.nav-group.contains-active > .nav-group-toggle {
+  color: #0f766e;
+}
+
+.nav-group-toggle small {
+  align-items: center;
+  background: #eef2f4;
+  border-radius: 999px;
+  color: #64748b;
+  display: inline-flex;
+  font-size: 9px;
+  height: 18px;
+  justify-content: center;
+  min-width: 20px;
+}
+
+.nav-group-toggle svg {
+  margin-left: 5px;
+  transition: transform 180ms ease;
+}
+
+.nav-group.open .nav-group-toggle svg {
+  transform: rotate(180deg);
+}
+
+.nav-group-items {
+  display: grid;
+  gap: 1px;
+  padding: 0 4px;
+}
+
+.nav-group-items[hidden] {
+  display: none;
+}
+
+.nav-group-items button {
+  align-items: center;
+  background: transparent;
+  border-radius: 6px;
+  color: #52627a;
+  display: flex;
+  font-size: 11px;
+  gap: 8px;
+  height: 29px;
+  min-width: 0;
+  padding: 0 8px;
+  text-align: left;
+  width: 100%;
+}
+
+.nav-group-items button span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nav-group-items button.active,
+.nav-group-items button:hover {
   background: #e7f3f1;
   color: #0f766e;
+}
+
+.nav-group-items button.active {
+  box-shadow: inset 2px 0 #0f766e;
+  font-weight: 700;
 }
 
 .sidebar-card {
   margin-top: auto;
   border: 1px solid #d9e0e4;
   border-radius: 8px;
-  padding: 14px;
+  flex: 0 0 auto;
+  padding: 10px;
   color: #334155;
   background: #fbfcfd;
 }
 
 .sidebar-card p {
-  margin: 10px 0 0;
-  font-size: 12px;
-  line-height: 1.55;
+  margin: 7px 0 0;
+  font-size: 10px;
+  line-height: 1.45;
 }
 
 .workspace {
@@ -2536,6 +2649,76 @@ textarea:focus {
   gap: 10px;
 }
 
+.citation-heading-actions {
+  align-items: center;
+  display: flex;
+  gap: 7px;
+}
+
+.citation-heading-actions > span {
+  background: #eef2f4;
+  border-radius: 999px;
+  color: #52627a;
+  font-size: 10px;
+  font-weight: 800;
+  padding: 5px 8px;
+  white-space: nowrap;
+}
+
+.citation-disclosure {
+  align-items: center;
+  background: #e7f3f1;
+  border: 1px solid #c7e3df;
+  border-radius: 6px;
+  color: #0f766e;
+  display: inline-flex;
+  font-size: 10px;
+  font-weight: 800;
+  gap: 5px;
+  min-height: 28px;
+  padding: 0 8px;
+}
+
+.citation-disclosure svg {
+  transition: transform 180ms ease;
+}
+
+.citation-disclosure[aria-expanded="true"] svg {
+  transform: rotate(180deg);
+}
+
+.citations-panel.expanded .citation-list {
+  max-height: 480px;
+  overflow-y: auto;
+  padding-right: 5px;
+  scrollbar-color: #cbd5e1 transparent;
+  scrollbar-width: thin;
+}
+
+.citation-more {
+  align-items: center;
+  background: #f8fafb;
+  border: 1px dashed #cbd5e1;
+  border-radius: 7px;
+  color: #475569;
+  display: grid;
+  font-size: 10px;
+  font-weight: 800;
+  gap: 7px;
+  grid-template-columns: auto 1fr auto;
+  margin-top: 10px;
+  min-height: 34px;
+  padding: 0 10px;
+  text-align: left;
+  width: 100%;
+}
+
+.citation-more:hover {
+  background: #e7f3f1;
+  border-color: #8bc5bd;
+  color: #0f766e;
+}
+
 .attack-list {
   display: grid;
   gap: 8px;
@@ -2633,6 +2816,13 @@ textarea:focus {
   font-size: 12px;
   line-height: 1.55;
   margin-top: 8px;
+}
+
+.citations-panel.collapsed .citation p {
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  display: -webkit-box;
+  overflow: hidden;
 }
 
 .policy-rail {
@@ -3755,7 +3945,7 @@ button.timeline-row:hover strong {
 }
 
 .presentation-picker-heading > button,
-.presentation-tooltip-topline > button {
+.presentation-tooltip-actions > button {
   align-items: center;
   background: transparent;
   border-radius: 6px;
@@ -3766,7 +3956,7 @@ button.timeline-row:hover strong {
 }
 
 .presentation-picker-heading > button:hover,
-.presentation-tooltip-topline > button:hover {
+.presentation-tooltip-actions > button:hover {
   background: #f1f5f9;
   color: #0f172a;
 }
@@ -3881,7 +4071,6 @@ button.timeline-row:hover strong {
   box-shadow: 0 0 0 9999px rgba(15, 23, 42, 0.7), 0 0 0 5px rgba(94, 234, 212, 0.18);
   pointer-events: none;
   position: fixed;
-  transition: height 240ms ease, left 240ms ease, top 240ms ease, width 240ms ease;
   z-index: 211;
 }
 
@@ -3891,6 +4080,7 @@ button.timeline-row:hover strong {
   border-radius: 12px;
   box-shadow: 0 24px 70px rgba(15, 23, 42, 0.36);
   max-height: calc(100vh - 24px);
+  overscroll-behavior: contain;
   overflow-y: auto;
   padding: 16px;
   pointer-events: auto;
@@ -3902,7 +4092,23 @@ button.timeline-row:hover strong {
 .presentation-tooltip-topline {
   align-items: center;
   display: flex;
+  gap: 12px;
   justify-content: space-between;
+}
+
+.presentation-tooltip-actions {
+  align-items: center;
+  display: flex;
+  gap: 4px;
+}
+
+.presentation-tooltip-actions .presentation-move {
+  border: 1px solid #d9e0e4;
+  font-size: 9px;
+  font-weight: 800;
+  gap: 5px;
+  min-height: 28px;
+  padding: 0 8px;
 }
 
 .presentation-tooltip-topline > span {
@@ -5989,12 +6195,12 @@ button.timeline-row:hover strong {
 
 @media (max-width: 1280px) {
   .app-shell {
-    grid-template-columns: 1fr;
+    grid-template-columns: 218px minmax(0, 1fr);
   }
 
   .sidebar {
-    position: static;
-    height: auto;
+    height: 100vh;
+    position: sticky;
   }
 
   .console-grid,
@@ -6014,8 +6220,10 @@ button.timeline-row:hover strong {
       "registry registry"
       "trust trust"
       "security security"
+      "code code"
       "risk risk"
       "proposals proposals"
+      "release release"
       "replay replay"
       "approval audit"
       "ledger ledger";
@@ -6050,6 +6258,25 @@ button.timeline-row:hover strong {
 }
 
 @media (max-width: 760px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    height: auto;
+    max-height: none;
+    overflow: visible;
+    position: static;
+  }
+
+  .nav {
+    max-height: 360px;
+  }
+
+  .sidebar-card {
+    display: none;
+  }
+
   .trust-hero {
     padding: 20px 16px;
   }
@@ -6226,6 +6453,10 @@ button.timeline-row:hover strong {
     width: auto;
   }
 
+  .presentation-move span {
+    display: none;
+  }
+
   .presentation-shortcuts {
     display: none;
   }
@@ -6259,8 +6490,10 @@ button.timeline-row:hover strong {
       "registry"
       "trust"
       "security"
+      "code"
       "risk"
       "proposals"
+      "release"
       "replay"
       "tools"
       "approval"

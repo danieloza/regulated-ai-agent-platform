@@ -9,6 +9,7 @@ import {
   BookOpenCheck,
   BriefcaseBusiness,
   CheckCircle2,
+  ChevronDown,
   ChevronRight,
   Clock3,
   Code2,
@@ -28,6 +29,7 @@ import {
   Layers3,
   Link2,
   MessageSquareText,
+  Move,
   Network,
   OctagonX,
   PackageCheck,
@@ -47,7 +49,7 @@ import {
   Workflow,
   X,
 } from "lucide-react";
-import { KnowledgeGraphView, ObsidianConnectorView } from "./components/KnowledgeIntegrations";
+import { ArchitectureGraphView, KnowledgeGraphView, ObsidianConnectorView } from "./components/KnowledgeIntegrations";
 import "./styles.css";
 
 const API = import.meta.env.VITE_API_URL ?? "";
@@ -90,29 +92,55 @@ const trustCasePayload = {
   note: "KYC review completed; route the verified outcome to the controlled case system.",
 };
 
-const sections = [
-  ["Operator Console", "operator-console", Activity],
-  ["Safe RAG", "safe-rag", FileText],
-  ["Prompt Injection Lab", "prompt-lab", Beaker],
-  ["Document Upload", "document-upload", Upload],
-  ["Governance Lifecycle", "governance-lifecycle", ShieldCheck],
-  ["Data Subject Requests", "data-subject-requests", Fingerprint],
-  ["Control Lifecycle Matrix", "control-lifecycle-matrix", Workflow],
-  ["Knowledge Control Center", "knowledge-control-center", BookOpenCheck],
-  ["Governance Registry", "governance-registry", FileSpreadsheet],
-  ["Identity & Trust", "identity-trust", KeyRound],
-  ["Tool Gateway", "tool-gateway", Workflow],
-  ["Policy Engine", "policy-engine", Gavel],
-  ["Security Twin", "security-twin", Network],
-  ["Code Assurance", "code-assurance", Code2],
-  ["Risk Intelligence", "risk-intelligence", Gauge],
-  ["Change Proposal Inbox", "change-proposal-inbox", Inbox],
-  ["Release Assurance", "release-assurance", PackageCheck],
-  ["Policy Replay", "policy-replay", GitCompareArrows],
-  ["Audit Trail", "audit-trail", Fingerprint],
-  ["Human Approval", "human-approval", UserCheck],
-  ["Ledger Demo", "ledger-demo", Database],
+const sectionGroups = [
+  {
+    id: "workspace",
+    label: "Workspace",
+    items: [
+      ["Operator Console", "operator-console", Activity],
+      ["Safe RAG", "safe-rag", FileText],
+      ["Prompt Injection Lab", "prompt-lab", Beaker],
+      ["Document Upload", "document-upload", Upload],
+    ],
+  },
+  {
+    id: "governance",
+    label: "Governance",
+    items: [
+      ["Governance Lifecycle", "governance-lifecycle", ShieldCheck],
+      ["Data Subject Requests", "data-subject-requests", Fingerprint],
+      ["Control Lifecycle Matrix", "control-lifecycle-matrix", Workflow],
+      ["Knowledge Control Center", "knowledge-control-center", BookOpenCheck],
+      ["Governance Registry", "governance-registry", FileSpreadsheet],
+    ],
+  },
+  {
+    id: "security",
+    label: "Security & Trust",
+    items: [
+      ["Identity & Trust", "identity-trust", KeyRound],
+      ["Tool Gateway", "tool-gateway", Workflow],
+      ["Policy Engine", "policy-engine", Gavel],
+      ["Security Twin", "security-twin", Network],
+      ["Code Assurance", "code-assurance", Code2],
+    ],
+  },
+  {
+    id: "assurance",
+    label: "Assurance & Evidence",
+    items: [
+      ["Risk Intelligence", "risk-intelligence", Gauge],
+      ["Change Proposal Inbox", "change-proposal-inbox", Inbox],
+      ["Release Assurance", "release-assurance", PackageCheck],
+      ["Policy Replay", "policy-replay", GitCompareArrows],
+      ["Audit Trail", "audit-trail", Fingerprint],
+      ["Human Approval", "human-approval", UserCheck],
+      ["Ledger Demo", "ledger-demo", Database],
+    ],
+  },
 ];
+
+const sections = sectionGroups.flatMap((group) => group.items);
 
 const presentationStories = {
   client: {
@@ -220,9 +248,18 @@ const presentationStories = {
         cue: "Use the graph and accessible relationship list to distinguish persisted lineage from analytical signals.",
       },
       {
+        target: "#knowledge-control-center .architecture-graph-view",
+        section: "knowledge-control-center",
+        knowledgeTab: "architecture",
+        eyebrow: "08 · Verify implementation",
+        title: "Focus the living control plane",
+        body: "The Interactive Governance Atlas uses contextual camera focus, readable evidence cards and fullscreen presentation to explain one active control without losing the surrounding system context.",
+        cue: "Enter Present mode, play Source-bound RAG, then run Change Impact to approval bypassed. Point out the focused Trust & Evidence boundary before opening the blocking release gate.",
+      },
+      {
         target: "#control-lifecycle-matrix .control-matrix-heading",
         section: "control-lifecycle-matrix",
-        eyebrow: "08 · Connect operations",
+        eyebrow: "09 · Connect operations",
         title: "Show governed operating lifecycles",
         body: "Cost, model, approval and knowledge changes follow guarded transitions with owners, evidence and a defined next action.",
         cue: "Explain that governance is a repeatable operating process, not a collection of disconnected dashboard cards.",
@@ -230,7 +267,7 @@ const presentationStories = {
       {
         target: "#audit-trail",
         section: "audit-trail",
-        eyebrow: "09 · Close with proof",
+        eyebrow: "10 · Close with proof",
         title: "Finish on audit evidence",
         body: "Every important run preserves the decision, risk factors, citations, tool activity, approvals and timestamps needed for review.",
         cue: "Close with: The platform can explain what happened, why it happened and who was accountable.",
@@ -324,6 +361,15 @@ const presentationStories = {
         title: "Inspect the governance graph",
         body: "The graph joins connectors, notes, sources, changes, claims, releases and historical runs without overstating inferred relationships.",
         cue: "Discuss the data model and why authoritative provenance is separated from lexical run overlap.",
+      },
+      {
+        target: "#knowledge-control-center .architecture-graph-view",
+        section: "knowledge-control-center",
+        knowledgeTab: "architecture",
+        eyebrow: "08 · IMPLEMENTATION EVIDENCE",
+        title: "Navigate the code as a governed system",
+        body: "The offline atlas turns 575 code symbols and 1,901 relationships into a focus-driven system view, five governed stories, modeled change impact and a searchable engineering drill-down.",
+        cue: "Click a layer to trigger contextual focus, enter fullscreen Present mode, then inspect one code-bound control. Explain the security choice: sanitized artifact, React escaping, no CDN, no repository credentials and zero LLM tokens.",
       },
       {
         target: "#change-proposal-inbox .proposal-hero",
@@ -465,6 +511,8 @@ function App() {
   const [ledger, setLedger] = useState(null);
   const [toolResult, setToolResult] = useState(null);
   const [activeSection, setActiveSection] = useState("operator-console");
+  const [openNavGroups, setOpenNavGroups] = useState({ workspace: true });
+  const [citationsExpanded, setCitationsExpanded] = useState(false);
   const [attacks, setAttacks] = useState([]);
   const [attackResult, setAttackResult] = useState(null);
   const [selectedRun, setSelectedRun] = useState(null);
@@ -1795,6 +1843,11 @@ function App() {
   }
 
   const events = useMemo(() => run?.audit ?? dashboard?.audit ?? [], [run, dashboard]);
+  const citationItems = useMemo(
+    () => (run?.citations?.length ? run.citations : dashboard?.documents ?? []),
+    [run?.citations, dashboard?.documents],
+  );
+  const visibleCitations = citationsExpanded ? citationItems : citationItems.slice(0, 3);
   const selectedSecurityScenario = useMemo(
     () => securityTwin?.scenarios?.find((item) => item.id === selectedSecurityScenarioId) ?? securityTwin?.scenarios?.[0] ?? null,
     [securityTwin, selectedSecurityScenarioId],
@@ -1870,6 +1923,9 @@ function App() {
   useEffect(() => {
     if (selectedProposal) setProposalOwner(selectedProposal.owner);
   }, [selectedProposal?.id]);
+  useEffect(() => {
+    setCitationsExpanded(false);
+  }, [run?.run_id]);
   const selectedControl = useMemo(
     () => controlLifecycles?.lifecycles?.find((item) => item.kind === selectedControlKind) ?? null,
     [controlLifecycles, selectedControlKind],
@@ -1879,7 +1935,15 @@ function App() {
     [knowledge, selectedKnowledgeChangeId],
   );
 
+  function revealNavGroup(sectionId) {
+    const group = sectionGroups.find((item) => item.items.some(([, itemId]) => itemId === sectionId));
+    if (group) {
+      setOpenNavGroups({ [group.id]: true });
+    }
+  }
+
   function goToSection(sectionId) {
+    revealNavGroup(sectionId);
     setActiveSection(sectionId);
     document.getElementById(sectionId)?.scrollIntoView({ behavior: "smooth", block: "start" });
     window.history.replaceState(null, "", `#${sectionId}`);
@@ -1888,6 +1952,10 @@ function App() {
   const handlePresentationNavigate = useCallback((step) => {
     if (step.section) {
       setActiveSection(step.section);
+      const group = sectionGroups.find((item) => item.items.some(([, itemId]) => itemId === step.section));
+      if (group) {
+        setOpenNavGroups({ [group.id]: true });
+      }
       window.history.replaceState(null, "", `#${step.section}`);
     }
     if (step.knowledgeTab) setKnowledgeTab(step.knowledgeTab);
@@ -1908,13 +1976,38 @@ function App() {
             <span>Agent Platform</span>
           </div>
         </div>
-        <nav className="nav">
-          {sections.map(([label, sectionId, Icon]) => (
-            <button className={activeSection === sectionId ? "active" : ""} key={sectionId} type="button" onClick={() => goToSection(sectionId)}>
-              <Icon size={17} />
-              {label}
-            </button>
-          ))}
+        <nav className="nav" aria-label="Platform navigation">
+          <div className="nav-summary">
+            <span>Platform controls</span>
+            <strong>{sections.length}</strong>
+          </div>
+          {sectionGroups.map((group) => {
+            const isOpen = Boolean(openNavGroups[group.id]);
+            const containsActive = group.items.some(([, sectionId]) => sectionId === activeSection);
+            return (
+              <div className={`nav-group ${isOpen ? "open" : "collapsed"} ${containsActive ? "contains-active" : ""}`} key={group.id}>
+                <button
+                  className="nav-group-toggle"
+                  type="button"
+                  aria-expanded={isOpen}
+                  aria-controls={`nav-group-${group.id}`}
+                  onClick={() => setOpenNavGroups((current) => (current[group.id] ? {} : { [group.id]: true }))}
+                >
+                  <span>{group.label}</span>
+                  <small>{group.items.length}</small>
+                  <ChevronDown size={14} aria-hidden="true" />
+                </button>
+                <div className="nav-group-items" id={`nav-group-${group.id}`} hidden={!isOpen}>
+                  {group.items.map(([label, sectionId, Icon]) => (
+                    <button className={activeSection === sectionId ? "active" : ""} key={sectionId} type="button" onClick={() => goToSection(sectionId)}>
+                      <Icon size={15} />
+                      <span>{label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
         </nav>
         <div className="sidebar-card">
           <LockKeyhole size={18} />
@@ -2309,6 +2402,7 @@ function App() {
                 ["overview", "Overview"],
                 ["connectors", "Connectors"],
                 ["graph", "Governance graph"],
+                ["architecture", "Architecture map"],
                 ["changes", "Change reviews"],
                 ["sources", "Sources"],
                 ["claims", "Claims"],
@@ -2319,7 +2413,7 @@ function App() {
               ))}
             </div>
 
-            <div className={`knowledge-workspace ${["connectors", "graph"].includes(knowledgeTab) ? "wide-view" : ""}`}>
+            <div className={`knowledge-workspace ${["connectors", "graph", "architecture"].includes(knowledgeTab) ? "wide-view" : ""}`}>
               <div className="knowledge-main">
                 {knowledgeTab === "overview" && (
                   <div className="knowledge-overview-view">
@@ -2379,6 +2473,10 @@ function App() {
 
                 {knowledgeTab === "graph" && (
                   <KnowledgeGraphView graph={knowledgeGraph} busy={knowledgeBusy} onRefresh={refreshKnowledgeGraph} />
+                )}
+
+                {knowledgeTab === "architecture" && (
+                  <ArchitectureGraphView onNavigate={goToSection} />
                 )}
 
                 {knowledgeTab === "changes" && (
@@ -2451,7 +2549,7 @@ function App() {
                 )}
               </div>
 
-              {!(["connectors", "graph"].includes(knowledgeTab)) && <aside className={`secure-context-vault ${secureContextToken ? "unlocked" : "locked"}`}>
+              {!(["connectors", "graph", "architecture"].includes(knowledgeTab)) && <aside className={`secure-context-vault ${secureContextToken ? "unlocked" : "locked"}`}>
                 <div className="vault-heading"><span>{secureContextToken ? <ShieldCheck size={18} /> : <LockKeyhole size={18} />}</span><div><small>Protected operational data</small><h3>Secure Context Vault</h3></div><code>{secureContextToken ? "unlocked" : "locked"}</code></div>
                 {!secureContextToken ? (
                   <>
@@ -2586,16 +2684,30 @@ function App() {
             </div>
           </section>
 
-          <section className="panel citations-panel" id="citations">
+          <section className={`panel citations-panel ${citationsExpanded ? "expanded" : "collapsed"}`} id="citations">
             <div className="panel-heading">
               <div>
                 <h2>Citations</h2>
-                <p>Retrieved context stays visible for audit review.</p>
+                <p>{citationsExpanded ? "Reviewing the complete source inventory." : "Showing a compact evidence preview."}</p>
               </div>
-              <Search size={17} />
+              <div className="citation-heading-actions">
+                <span>{citationItems.length} sources</span>
+                {citationItems.length > 3 && (
+                  <button
+                    className="citation-disclosure"
+                    type="button"
+                    aria-expanded={citationsExpanded}
+                    aria-controls="citation-list"
+                    onClick={() => setCitationsExpanded((current) => !current)}
+                  >
+                    {citationsExpanded ? "Collapse" : "Show all"}
+                    <ChevronDown size={14} aria-hidden="true" />
+                  </button>
+                )}
+              </div>
             </div>
-            <div className="citation-list">
-              {(run?.citations?.length ? run.citations : dashboard?.documents ?? []).map((item) => (
+            <div className="citation-list" id="citation-list">
+              {visibleCitations.map((item) => (
                 <article className="citation" key={item.chunk_id ?? item.id}>
                   <div>
                     <strong>{item.title}</strong>
@@ -2605,6 +2717,13 @@ function App() {
                 </article>
               ))}
             </div>
+            {!citationsExpanded && citationItems.length > 3 && (
+              <button className="citation-more" type="button" aria-expanded="false" aria-controls="citation-list" onClick={() => setCitationsExpanded(true)}>
+                <Search size={15} />
+                Review {citationItems.length - 3} additional sources
+                <ChevronDown size={15} aria-hidden="true" />
+              </button>
+            )}
           </section>
 
           <section className="panel policy-panel" id="policy-engine">
@@ -3844,10 +3963,14 @@ function PresentationTour({ audience, onClose, onNavigate }) {
   const story = presentationStories[audience];
   const [stepIndex, setStepIndex] = useState(0);
   const [targetRect, setTargetRect] = useState(null);
+  const [tooltipSize, setTooltipSize] = useState({ width: 380, height: 360 });
+  const [panelPosition, setPanelPosition] = useState(0);
   const headingRef = useRef(null);
+  const tooltipRef = useRef(null);
   const step = story.steps[stepIndex];
 
   useEffect(() => {
+    setPanelPosition(0);
     onNavigate(step);
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const target = document.querySelector(step.target);
@@ -3864,10 +3987,17 @@ function PresentationTour({ audience, onClose, onNavigate }) {
         }
         const rect = currentTarget.getBoundingClientRect();
         const inset = 8;
-        const top = Math.max(10, rect.top - inset);
+        let top = Math.max(10, rect.top - inset);
         const left = Math.max(10, rect.left - inset);
         const right = Math.min(window.innerWidth - 10, rect.right + inset);
-        const bottom = Math.min(window.innerHeight - 10, rect.bottom + inset);
+        let bottom = Math.min(window.innerHeight - 10, rect.bottom + inset);
+        const maxFocusHeight = window.innerWidth <= 760
+          ? Math.min(280, window.innerHeight * 0.34)
+          : window.innerHeight * 0.58;
+        if (bottom - top > maxFocusHeight) {
+          top = Math.min(top, window.innerHeight - maxFocusHeight - 10);
+          bottom = top + maxFocusHeight;
+        }
         setTargetRect({ top, left, width: Math.max(0, right - left), height: Math.max(0, bottom - top) });
       });
     }
@@ -3886,6 +4016,33 @@ function PresentationTour({ audience, onClose, onNavigate }) {
       window.removeEventListener("scroll", measureTarget, true);
     };
   }, [onNavigate, step]);
+
+  useEffect(() => {
+    const tooltip = tooltipRef.current;
+    if (!tooltip) return undefined;
+
+    function measureTooltip() {
+      const rect = tooltip.getBoundingClientRect();
+      const nextSize = {
+        width: Math.round(rect.width),
+        height: Math.round(Math.max(rect.height, tooltip.scrollHeight)),
+      };
+      setTooltipSize((current) => (
+        current.width === nextSize.width && current.height === nextSize.height
+          ? current
+          : nextSize
+      ));
+    }
+
+    measureTooltip();
+    const observer = new ResizeObserver(measureTooltip);
+    observer.observe(tooltip);
+    window.addEventListener("resize", measureTooltip);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", measureTooltip);
+    };
+  }, [stepIndex]);
 
   useEffect(() => {
     function handleKeyDown(event) {
@@ -3908,17 +4065,34 @@ function PresentationTour({ audience, onClose, onNavigate }) {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [onClose, story.steps.length]);
 
-  const cardStyle = getPresentationCardStyle(targetRect);
+  const cardPlacement = getPresentationCardPlacement(targetRect, tooltipSize, panelPosition);
   const progress = ((stepIndex + 1) / story.steps.length) * 100;
 
   return (
     <div className="presentation-tour" aria-live="polite">
       <div className="presentation-dim" aria-hidden="true" />
       {targetRect && <div className="presentation-spotlight" style={targetRect} aria-hidden="true" />}
-      <section className="presentation-tooltip" style={cardStyle} role="dialog" aria-label={`${story.label} presentation step ${stepIndex + 1}`}>
+      <section
+        className={`presentation-tooltip placement-${cardPlacement.name}`}
+        ref={tooltipRef}
+        style={cardPlacement.style}
+        role="dialog"
+        aria-label={`${story.label} presentation step ${stepIndex + 1}`}
+      >
         <div className="presentation-tooltip-topline">
           <span><Presentation size={14} />{story.shortLabel}</span>
-          <button type="button" onClick={onClose} aria-label="Exit presentation mode"><X size={16} /></button>
+          <div className="presentation-tooltip-actions">
+            <button
+              type="button"
+              className="presentation-move"
+              onClick={() => setPanelPosition((current) => current + 1)}
+              aria-label={`Move presenter panel. Current position: ${cardPlacement.label}`}
+            >
+              <Move size={14} />
+              <span>Move panel</span>
+            </button>
+            <button type="button" onClick={onClose} aria-label="Exit presentation mode"><X size={16} /></button>
+          </div>
         </div>
         <div className="presentation-progress" aria-label={`Step ${stepIndex + 1} of ${story.steps.length}`}>
           <i style={{ width: `${progress}%` }} />
@@ -3949,26 +4123,99 @@ function PresentationTour({ audience, onClose, onNavigate }) {
   );
 }
 
-function getPresentationCardStyle(targetRect) {
+function getPresentationCardPlacement(targetRect, tooltipSize, positionIndex = 0) {
   const viewportWidth = window.innerWidth;
   const viewportHeight = window.innerHeight;
-  if (viewportWidth <= 760) return { bottom: 12, left: 12, right: 12 };
-  if (!targetRect) return { left: "50%", top: "50%", transform: "translate(-50%, -50%)" };
+  const compact = viewportWidth <= 760;
+  const edge = compact ? 12 : 18;
+  const gap = compact ? 12 : 18;
+  const cardWidth = Math.min(compact ? viewportWidth - edge * 2 : 380, viewportWidth - edge * 2);
+  const desiredHeight = Math.min(Math.max(tooltipSize.height, 260), viewportHeight - edge * 2);
+  const viewportMaxHeight = viewportHeight - edge * 2;
 
-  const cardWidth = 380;
-  const cardHeight = 410;
-  const gap = 18;
-  const clampTop = Math.max(18, Math.min(targetRect.top, viewportHeight - cardHeight - 18));
-  if (viewportWidth - (targetRect.left + targetRect.width) >= cardWidth + gap + 12) {
-    return { left: targetRect.left + targetRect.width + gap, top: clampTop };
+  if (!targetRect) {
+    return {
+      name: "center",
+      label: "center",
+      style: {
+        left: "50%",
+        maxHeight: viewportMaxHeight,
+        top: "50%",
+        transform: "translate(-50%, -50%)",
+        width: cardWidth,
+      },
+    };
   }
-  if (targetRect.left >= cardWidth + gap + 12) {
-    return { left: targetRect.left - cardWidth - gap, top: clampTop };
+
+  const targetRight = targetRect.left + targetRect.width;
+  const targetBottom = targetRect.top + targetRect.height;
+  const centeredTop = Math.max(edge, Math.min(
+    targetRect.top + (targetRect.height - desiredHeight) / 2,
+    viewportHeight - desiredHeight - edge,
+  ));
+  const centeredLeft = Math.max(edge, Math.min(
+    targetRect.left + (targetRect.width - cardWidth) / 2,
+    viewportWidth - cardWidth - edge,
+  ));
+  const spaceAbove = targetRect.top - gap - edge;
+  const spaceBelow = viewportHeight - targetBottom - gap - edge;
+  const placements = [];
+
+  if (viewportWidth - targetRight - gap - edge >= cardWidth) {
+    placements.push({
+      name: "right",
+      label: "right of focus",
+      style: { left: targetRight + gap, maxHeight: viewportMaxHeight, top: centeredTop, width: cardWidth },
+    });
   }
-  if (viewportHeight - (targetRect.top + targetRect.height) >= cardHeight + gap) {
-    return { left: Math.max(18, Math.min(targetRect.left, viewportWidth - cardWidth - 18)), top: targetRect.top + targetRect.height + gap };
+  if (targetRect.left - gap - edge >= cardWidth) {
+    placements.push({
+      name: "left",
+      label: "left of focus",
+      style: { left: targetRect.left - cardWidth - gap, maxHeight: viewportMaxHeight, top: centeredTop, width: cardWidth },
+    });
   }
-  return { bottom: 18, right: 18 };
+
+  const verticalPlacements = [
+    {
+      available: spaceAbove,
+      name: "above",
+      label: "above focus",
+      style: { left: centeredLeft, maxHeight: Math.max(0, spaceAbove), top: edge, width: cardWidth },
+    },
+    {
+      available: spaceBelow,
+      name: "below",
+      label: "below focus",
+      style: { left: centeredLeft, maxHeight: Math.max(0, spaceBelow), top: targetBottom + gap, width: cardWidth },
+    },
+  ]
+    .filter((placement) => placement.available >= 180)
+    .sort((a, b) => {
+      const aFits = a.available >= desiredHeight ? 1 : 0;
+      const bFits = b.available >= desiredHeight ? 1 : 0;
+      return bFits - aFits || b.available - a.available;
+    });
+
+  if (compact) placements.unshift(...verticalPlacements);
+  else placements.push(...verticalPlacements);
+
+  if (!placements.length) {
+    const useTop = targetRect.top > viewportHeight - targetBottom;
+    placements.push(useTop
+      ? {
+        name: "top-dock",
+        label: "top dock",
+        style: { left: edge, maxHeight: Math.max(220, targetRect.top - gap - edge), top: edge, width: cardWidth },
+      }
+      : {
+        name: "bottom-dock",
+        label: "bottom dock",
+        style: { bottom: edge, left: edge, maxHeight: Math.max(220, viewportHeight - targetBottom - gap - edge), width: cardWidth },
+      });
+  }
+
+  return placements[positionIndex % placements.length];
 }
 
 function Metric({ label, value, tone = "default" }) {

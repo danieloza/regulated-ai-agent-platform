@@ -28,6 +28,7 @@ The goal is to demonstrate the engineering layer around AI agents: RAG, governan
 - Secure RAG assistant with source-bound answers and citations.
 - Governed LLM Wiki with immutable sources, compiled claims, contradiction detection, knowledge diffs, historical impact replay, approval-gated publication, and versioned releases.
 - Knowledge Control Center with explainable health controls, operator review queue, claim provenance, source freshness, release lineage, and premium responsive UX.
+- Interactive Governance Atlas with a rotatable 2.5D system map, governed flow animation, modeled change-impact blast radius, deep links into real platform controls, and searchable code-symbol drill-down generated from deterministic AST evidence.
 - Controlled Obsidian Vault Connector with allowlisted Markdown scanning, persisted Preview Diff, drift-safe apply, `Open in Obsidian` deep links, and a knowledge governance graph.
 - Secure Context Vault with encrypted supplemental context, short-lived step-up access, scope and TTL controls, single-run consumption, secret/injection scans, and metadata-only audit evidence.
 - Prompt-injection lab with runnable attack scenarios and expected policy outcomes.
@@ -73,6 +74,26 @@ The goal is to demonstrate the engineering layer around AI agents: RAG, governan
 ## Stack
 
 Python, FastAPI, SQLAlchemy, Pydantic, PostgreSQL/SQLite, Alembic, LangGraph, Redis, Prometheus, deterministic mock embeddings, React, Vite, lucide-react, Docker, Kubernetes, pytest.
+
+## Interactive Governance Atlas
+
+The `Architecture map` view inside Knowledge Control Center is generated from a reviewed Graphify `code-only` scan. Graphify is not installed in the application containers and the browser does not receive repository access, credentials, remote scripts, or an LLM connection. A repository script converts the analyzer output into a sanitized, integrity-digested React dataset:
+
+```powershell
+node scripts/build_architecture_graph.mjs `
+  --input path/to/graphify-out/graph.json `
+  --output frontend/src/data/architecture-graph.json `
+  --commit $(git rev-parse HEAD)
+```
+
+The atlas offers three bounded views:
+
+- `Explore` adds controlled 2.5D rotation and contextual focus: selecting a layer centers it, dims surrounding context, and opens a readable evidence card with business purpose, controls, generated evidence, and real-module navigation.
+- `Guided Story` animates source-bound RAG, regulated writes, prompt-injection containment, policy replay, and release assurance as evidence-producing control flows while the camera follows the active boundary.
+- `Change Impact` replays a clearly labeled portfolio candidate where an approval bypass makes a regulated write reachable, traces the modeled blast radius, and ends at a fail-closed `NO-GO` with links to Change Proposal Inbox and Release Assurance.
+- `Present` opens a fullscreen, keyboard-accessible narrative surface for client and portfolio walkthroughs; `Escape` returns to the application and arrow keys advance governed story steps.
+
+The symbol graph remains the engineering view: it exposes source locations, inbound and outbound relationships, confidence semantics, layer filters, search, and an accessible evidence table. Motion respects `prefers-reduced-motion`; the modeled candidate never mutates runtime state.
 
 ## Release Artifacts
 
@@ -169,16 +190,17 @@ Use this flow when presenting the project in an interview:
 7. Open `Control Lifecycle Matrix`. Compare cost, model change, human approval, and knowledge governance as separate guarded loops using one lifecycle engine.
 8. Open `Knowledge Control Center`. Scan the bundled Obsidian vault, inspect the persisted Preview Diff, and apply it to the human review queue.
 9. Open `Governance graph` to trace note-to-source-to-claim lineage, then review the five-to-seven-year retention contradiction and historical impact replay.
-10. Unlock `Secure Context Vault`, attach confidential context to one run, and show that the audit records only its metadata and integrity digest.
-11. Go to `Prompt Injection Lab`, run an instruction-override attack, and inspect the denied run with risk factors and audit evidence.
-12. Open `Security Twin`. Compare the current tool-scope boundary with an overprivileged candidate, inspect the `0 -> 18` modeled blast-radius diff, approve a sandbox containment plan, and replay it until the path is proven broken.
-13. Open `Code Assurance`. Import the bounded SARIF profile, inspect the immutable commit and modeled attack path, approve remediation as a separate reviewer, attach passing CI evidence, and hand the candidate to Release Assurance.
-14. Use `Tool Gateway` to compare an allowed read with a regulated write that becomes `approval_required`.
-15. Open `Change Proposal Inbox`. Detect proposals, inspect the evidence and component diff, then show that `Accept for release` creates a controlled handoff without applying a runtime change.
-16. Open `Release Assurance`. Run `Guardrail v2`, inspect the joined certification matrix and zero-record attack path, approve it as a different operator, and export the non-deploying integrity attestation.
-17. Re-run with `Operations fast path` and show the hard `NO-GO`: removing approval exposes a modeled path to 1,042 customer records and the approve action is unavailable.
-18. Show `/api/v1` OIDC/workload authentication, tenant context, RBAC, idempotency replay, durable delivery, and the generated integration outbox event.
-19. Go to `Ledger Demo` and compare unsafe read-modify-write with the atomic SQL update:
+10. Open `Architecture map`, click `Present`, and play the `Source-bound RAG` story. Then run `Change Impact` to `approval bypassed`: the camera centers `Trust & Evidence`, surrounding context dims, and the readable focus card exposes maker-checker evidence. Continue to the blocking `NO-GO`, then drill into `EnterprisePrincipal` or open Release Assurance directly from the affected layer.
+11. Unlock `Secure Context Vault`, attach confidential context to one run, and show that the audit records only its metadata and integrity digest.
+12. Go to `Prompt Injection Lab`, run an instruction-override attack, and inspect the denied run with risk factors and audit evidence.
+13. Open `Security Twin`. Compare the current tool-scope boundary with an overprivileged candidate, inspect the `0 -> 18` modeled blast-radius diff, approve a sandbox containment plan, and replay it until the path is proven broken.
+14. Open `Code Assurance`. Import the bounded SARIF profile, inspect the immutable commit and modeled attack path, approve remediation as a separate reviewer, attach passing CI evidence, and hand the candidate to Release Assurance.
+15. Use `Tool Gateway` to compare an allowed read with a regulated write that becomes `approval_required`.
+16. Open `Change Proposal Inbox`. Detect proposals, inspect the evidence and component diff, then show that `Accept for release` creates a controlled handoff without applying a runtime change.
+17. Open `Release Assurance`. Run `Guardrail v2`, inspect the joined certification matrix and zero-record attack path, approve it as a different operator, and export the non-deploying integrity attestation.
+18. Re-run with `Operations fast path` and show the hard `NO-GO`: removing approval exposes a modeled path to 1,042 customer records and the approve action is unavailable.
+19. Show `/api/v1` OIDC/workload authentication, tenant context, RBAC, idempotency replay, durable delivery, and the generated integration outbox event.
+20. Go to `Ledger Demo` and compare unsafe read-modify-write with the atomic SQL update:
 
 ```sql
 UPDATE accounts
@@ -251,7 +273,7 @@ The embedded 59-second, watermark-free workflow animation has English voice-over
 
 ![Regulated AI Agent Platform demo](docs/demo.gif)
 
-The guided client and HR stories include the Enterprise Identity & Trust Plane, Governed Code Assurance, and the Release Assurance War Room. They continue from source-bound RAG through adversarial testing, modeled attack paths, immutable code evidence, governed change synthesis, joined release certification, independent approval, and integrity evidence without granting the agent runtime or deployment authority.
+The guided client and HR stories include the Enterprise Identity & Trust Plane, Governed Code Assurance, the Interactive Governance Atlas, and the Release Assurance War Room. The atlas now adds contextual camera focus, readable active-control evidence, and a fullscreen presentation surface. The tour continues from source-bound RAG through animated control flows, adversarial testing, modeled attack paths, immutable code evidence, governed change synthesis, joined release certification, independent approval, and integrity evidence without granting the agent runtime or deployment authority.
 
 ## Screenshots
 
@@ -270,6 +292,10 @@ The guided client and HR stories include the Enterprise Identity & Trust Plane, 
 ### Knowledge Control Center
 
 ![Knowledge Control Center](docs/screenshots/04-knowledge-control-center.png)
+
+### Interactive Governance Atlas
+
+![Interactive Governance Atlas contextual focus on an approval-boundary regression](docs/screenshots/12-offline-architecture-intelligence.png)
 
 ### Policy Replay & Diff
 
