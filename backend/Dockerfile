@@ -12,6 +12,7 @@ COPY migrations ./migrations
 
 RUN python -m pip install --no-cache-dir --upgrade pip "setuptools>=78.1.1" \
     && pip install --no-cache-dir . \
+    && python -m pip uninstall --yes pip setuptools \
     && useradd --create-home --uid 10001 appuser \
     && mkdir -p /app/app/data \
     && chown -R appuser:appuser /app
