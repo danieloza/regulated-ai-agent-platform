@@ -10,7 +10,7 @@ COPY app ./app
 COPY alembic.ini ./
 COPY migrations ./migrations
 
-RUN python -m pip install --upgrade pip \
+RUN python -m pip install --no-cache-dir --upgrade pip "setuptools>=78.1.1" \
     && pip install --no-cache-dir . \
     && useradd --create-home --uid 10001 appuser \
     && mkdir -p /app/app/data \

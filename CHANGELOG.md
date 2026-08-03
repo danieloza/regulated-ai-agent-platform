@@ -29,6 +29,7 @@ This file records material platform changes for operators, reviewers, and integr
 
 ### Security
 
+- The backend container now enforces patched dependency floors for `msgpack>=1.2.1` and `setuptools>=78.1.1`, addressing the two high-severity findings reported by the Trivy image gate.
 - Focus and presentation behavior remain local React, SVG, and CSS state; the patch adds no remote renderer, analytics surface, repository authority, or runtime mutation.
 - Atlas motion is implemented with the existing React, SVG and CSS surface; it adds no WebGL engine, remote animation package, runtime repository access or LLM dependency, and the candidate-impact story is explicitly modeled and non-mutating.
 - Architecture evidence is rendered without remote JavaScript, runtime repository access, Graphify hooks, semantic extraction or LLM calls; absolute paths and control characters are removed before the generated dataset enters the frontend bundle.
@@ -41,6 +42,7 @@ This file records material platform changes for operators, reviewers, and integr
 
 ### Operational impact
 
+- Backend images must be rebuilt to replace layers containing the superseded `msgpack` and `setuptools` versions; the existing Trivy gate remains fail-closed for high and critical findings.
 - Graphify remains an external development-time analyzer rather than an application dependency; operators regenerate the committed architecture dataset explicitly when architectural evidence needs to be refreshed.
 - Production databases require migration `a7d3f8c19e42`.
 - Deployments issuing attestations must inject and rotate `RELEASE_ATTESTATION_KEY` and publish a stable `RELEASE_ATTESTATION_KEY_ID`.
@@ -48,6 +50,7 @@ This file records material platform changes for operators, reviewers, and integr
 
 ### Validation
 
+- Security remediation validation confirmed that Python 3.12 resolves `msgpack 1.2.1` and `setuptools 83.0.0`; `pip-audit` reported no known backend dependency vulnerabilities, all 67 backend tests passed, and Docker Compose configuration remained valid. The fail-closed GitHub Trivy job remains the authoritative post-push image verification.
 - Browser validation covered click-to-focus, automatic Guided Story and Change Impact camera transitions, `Back to full map`, fullscreen entry and `Escape` focus return, plus responsive presentation layouts at 1440 and 390 CSS pixels.
 - Browser validation covered atlas exploration, governed-story playback, approval-bypass impact replay through blocking `NO-GO`, deep-link navigation to Release Assurance, symbol drill-down, and responsive layout at 1440 and 390 CSS pixels.
 - Architecture generation produced an identical artifact on repeated runs, passed the local-path leakage scan, and was exercised in the browser across system-map, symbol-search, source-inspection, desktop, and 390-pixel responsive states.
