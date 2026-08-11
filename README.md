@@ -269,6 +269,14 @@ https://github.com/user-attachments/assets/90b56729-f937-4c41-9cef-b250e1522eda
 
 The embedded 59-second, watermark-free workflow animation has English voice-over and follows one request through source-bound evidence, policy decisions, scoped tools, human approval, Policy Replay, Security Twin analysis, and adversarial release assurance. Governed Code Assurance extends the same evidence-before-authority boundary to code changes; the current film remains accurate, while the detailed commit-to-release flow is shown in the product demo and screenshot below. The final `GO` remains authorization evidence; it does not trigger deployment.
 
+### Governance Control Trace
+
+[![Play the Regulated AI governance control trace](docs/screenshots/13-regulated-ai-control-trace.png)](https://danieloza.github.io/regulated-ai-agent-platform/media/regulated-ai-control-trace.mp4)
+
+[Play the 65-second full-HD control trace](https://danieloza.github.io/regulated-ai-agent-platform/media/regulated-ai-control-trace.mp4) · [Download MP4](docs/media/regulated-ai-control-trace.mp4)
+
+This second, watermark-free explainer asks the operational question behind regulated agent design: should the system be allowed to act? It presents the platform as a bounded control trace across policy, identity and authority, historical Policy Replay, attack-path containment, release evidence, independent approval, and integrity-attested closure. The film uses English voice-over and real platform surfaces; it demonstrates governance controls without claiming autonomous deployment authority.
+
 ### Guided Operator Tour
 
 ![Regulated AI Agent Platform demo](docs/demo.gif)

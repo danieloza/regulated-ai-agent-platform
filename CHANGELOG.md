@@ -6,6 +6,8 @@ This file records material platform changes for operators, reviewers, and integr
 
 ### Added
 
+- A 65-second, full-HD Governance Control Trace explainer with English voice-over, real platform surfaces, a dedicated README poster, and a browser-playable MP4 served from GitHub Pages.
+- A second demo narrative connecting policy, identity-bound authority, Policy Replay, Security Twin containment, release evidence, independent approval, and integrity-attested closure without granting deployment authority.
 - Contextual Focus Mode for the Interactive Governance Atlas, with camera centering, surrounding-context dimming, readable active-control evidence, explicit return to overview, and automatic step focus for Guided Story and Change Impact.
 - Fullscreen Atlas presentation mode with keyboard navigation, focus return, responsive single-column fallback, and reduced-motion-safe behavior.
 - Interactive Governance Atlas modes for controlled 2.5D exploration, five evidence-bound control stories, portfolio explanations, direct module navigation, and modeled approval-bypass blast-radius replay ending in a fail-closed `NO-GO`.
