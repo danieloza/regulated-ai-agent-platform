@@ -25,6 +25,7 @@ This file records material platform changes for operators, reviewers, and integr
 
 ### Changed
 
+- Embedded the Governance Control Trace through GitHub's native video player while retaining the full-quality GitHub Pages version as a separate playback and download path.
 - Updated the guided client and HR presentation steps, README demo path, public Atlas screenshot, and animated demo to present the approval-boundary regression through the new contextual focus surface.
 - Upgraded the architecture presentation step and public screenshot to demonstrate animated governance flows and release-impact reasoning while keeping the code-symbol evidence view available for engineering review.
 - Reorganized the operator sidebar into compact, accessible control groups, bounded the Citations inventory behind an expandable evidence preview, and made guided-presentation panels collision-aware with a manual repositioning fallback.
