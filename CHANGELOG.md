@@ -32,6 +32,7 @@ This file records material platform changes for operators, reviewers, and integr
 
 ### Security
 
+- Updated the frontend lockfile to `nanoid@3.3.18`, removing the high-severity `GHSA-2v37-7h3g-55p8` finding from dependency audit and SBOM generation.
 - The backend container now enforces patched dependency floors for `msgpack>=1.2.1` and `setuptools>=78.1.1`, then removes `pip` and `setuptools` build tooling from the final runtime filesystem so vendored superseded packages cannot remain in the deployable image.
 - Focus and presentation behavior remain local React, SVG, and CSS state; the patch adds no remote renderer, analytics surface, repository authority, or runtime mutation.
 - Atlas motion is implemented with the existing React, SVG and CSS surface; it adds no WebGL engine, remote animation package, runtime repository access or LLM dependency, and the candidate-impact story is explicitly modeled and non-mutating.
