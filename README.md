@@ -271,7 +271,7 @@ The embedded 59-second, watermark-free workflow animation has English voice-over
 
 ### Governance Control Trace
 
-https://github.com/user-attachments/assets/23d59a1d-2711-4d40-9777-ab76b477494c
+https://github.com/user-attachments/assets/0ce63bdb-d4f7-429e-ad2c-961ce31178da
 
 [Play the 65-second full-HD control trace](https://danieloza.github.io/regulated-ai-agent-platform/media/regulated-ai-control-trace.mp4) · [Download MP4](docs/media/regulated-ai-control-trace.mp4)
 
