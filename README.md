@@ -440,7 +440,7 @@ kubectl -n regulated-ai get pods,svc,hpa
 - Threat model: [docs/threat-model.md](docs/threat-model.md)
 - Production limitations: [docs/production-limitations.md](docs/production-limitations.md)
 
-## Interview Talking Points
+## Design Rationale
 
 The architecture intentionally prevents common AI-agent failure modes. Prompt-injection text can be retrieved as a document chunk, but it cannot grant new permissions because tools are exposed only through scoped backend endpoints. Regulated writes go through `approval_required`, every decision is audited, and PII is redacted before it reaches the operator timeline.
 
